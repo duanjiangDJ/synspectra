@@ -1,0 +1,33 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local assistant/editor state
+.claude/
+
+# Generated metric outputs and temporary LeoDD folders
+result/
+result.txt
+*_results_dd/
+**/*_results_dd/
+
+# Archives and packaged snapshots
+*.zip
+
+# Large external/reference resources
+treebanks/
+combine_index/
+index/
+
+# Local duplicate/backup folders
+新建文件夹/
+新建文件夹 (2)/
+
+# OS files
+.DS_Store
+Thumbs.db
