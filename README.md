@@ -65,6 +65,9 @@ project-root/
 ├── calculate_all_metrics.py             # Main script: combined pipeline
 ├── calculate_other_metrics.py           # Standalone: Custom + QuanSyn + LeoDD
 ├── calculate_neosca.py                  # Standalone: NeoSCA only
+├── run_metrics.py                        # Unified configurable entry point
+├── metrics_config.json                   # Method, output field, and path configuration
+├── metric_modules/                       # Modular metric implementations
 ├── leo_dd_python.py                      # Python reimplementation of LeoDDcalculator
 ├── requirements.txt                     # Python dependencies
 └── README.md                            # This file
@@ -274,6 +277,29 @@ Organize your `.txt` files under `source/<category>/` as described in [File Stru
 
 The default path is `C:/english-ewt-ud-2.4-190531.udpipe`. If you place the model elsewhere, update the path in `leo_dd_python.py` or in the call to `calculate_folder_mdd_ndd()`.
 
+### 3. Choose Enabled Methods
+
+The unified entry point reads `metrics_config.json`. Toggle individual methods in the `methods` section:
+
+```json
+{
+  "methods": {
+    "custom": true,
+    "leo": true,
+    "quansyn": true,
+    "neosca": false
+  }
+}
+```
+
+If you only want selected columns, update `output_fields` as well. The default config matches the current `result/text.csv`: custom metrics, LeoDD Python reimplementation, and QuanSyn enabled; NeoSCA disabled.
+
+Run the configurable pipeline with:
+
+```bash
+python run_metrics.py --config metrics_config.json
+```
+
 ###  Calculate all metrics
 
 ```bash
@@ -346,9 +372,12 @@ Each CSV contains the following columns:
 
 | Script | Description | Dependencies |
 |---|---|---|
-| `calculate_all_metrics.py` | **Main script.** Computes all metrics (custom + QuanSyn + NeoSCA + LeoDD) | Stanza, QuanSyn, NeoSCA, ufal.udpipe |
-| `calculate_other_metrics.py` | Computes dependency-based metrics (custom), QuanSyn, and LeoDDcalculator metrics | Stanza, QuanSyn, ufal.udpipe |
-| `calculate_neosca.py` | Computes only NeoSCA syntactic complexity metrics | NeoSCA |
+| `run_metrics.py` | Unified entry point controlled by `metrics_config.json` | Depends on enabled methods |
+| `metrics_config.json` | Default paths, resume behavior, output fields, and method switches | — |
+| `metric_modules/` | Modular implementations for custom, QuanSyn, NeoSCA, and pipeline orchestration | Stanza, QuanSyn, NeoSCA, ufal.udpipe |
+| `calculate_all_metrics.py` | Compatibility entry point: computes all metrics (custom + QuanSyn + NeoSCA + LeoDD) | Stanza, QuanSyn, NeoSCA, ufal.udpipe |
+| `calculate_other_metrics.py` | Compatibility entry point: computes custom, QuanSyn, and LeoDDcalculator metrics | Stanza, QuanSyn, ufal.udpipe |
+| `calculate_neosca.py` | Compatibility entry point: computes only NeoSCA syntactic complexity metrics | NeoSCA |
 | `leo_dd_python.py` | Reimplements the LeoDDcalculator MDD/NDD folder workflow | ufal.udpipe |
 
 ---
@@ -359,7 +388,7 @@ All scripts support **checkpoint/resume** functionality:
 
 - Processed filenames are recorded in the output CSV.
 - If execution is interrupted (e.g., power loss, crash), simply re-run the script — it will automatically detect already-processed files and continue from where it left off.
-- LeoDDcalculator results are cached and reused across runs. **Do not delete the Leo results folder that appears during execution** (if you are unsure why a folder suddenly appeared, it is best to leave it alone).
+- LeoDD Python reimplementation results are cached and reused across runs. **Do not delete the Leo results folder that appears during execution** (if you are unsure why a folder suddenly appeared, it is best to leave it alone).
 
 ---
 

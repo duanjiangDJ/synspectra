@@ -65,6 +65,9 @@ project-root/
 ├── calculate_all_metrics.py             # 主脚本：合并计算流程
 ├── calculate_other_metrics.py           # 独立脚本：自定义 + QuanSyn + Leo
 ├── calculate_neosca.py                  # 独立脚本：仅 NeoSCA
+├── run_metrics.py                        # 统一入口：按配置启用/禁用计算方法
+├── metrics_config.json                   # 计算方法、输出列和路径配置
+├── metric_modules/                       # 模块化计算实现
 ├── leo_dd_python.py                      # LeoDDcalculator 的 Python 复刻实现
 ├── requirements.txt                     # Python 依赖
 └── README.md                            # 本文件
@@ -266,6 +269,29 @@ pip install -r requirements.txt
 
 默认路径为 `C:/english-ewt-ud-2.4-190531.udpipe`。如果模型放在其他位置，请在 `leo_dd_python.py` 或 `calculate_folder_mdd_ndd()` 的调用参数中修改模型路径。
 
+### 3. 选择启用的计算方法
+
+默认统一入口读取 `metrics_config.json`。可在 `methods` 中自由启用或禁用各计算方法：
+
+```json
+{
+  "methods": {
+    "custom": true,
+    "leo": true,
+    "quansyn": true,
+    "neosca": false
+  }
+}
+```
+
+如果只想输出部分列，可同步调整 `output_fields`。默认配置与当前 `result/text.csv` 一致：启用自定义、LeoDD Python 复刻和 QuanSyn，关闭 NeoSCA。
+
+使用统一入口运行：
+
+```bash
+python run_metrics.py --config metrics_config.json
+```
+
 ### 计算所有指标
 
 ```bash
@@ -338,9 +364,12 @@ result/
 
 | 脚本                         | 描述                                                         | 依赖                                               |
 | ---------------------------- | ------------------------------------------------------------ | -------------------------------------------------- |
-| `calculate_all_metrics.py`   | **主脚本。** 计算全部指标（自定义 + QuanSyn + NeoSCA + LeoDD） | Stanza、QuanSyn、NeoSCA、ufal.udpipe |
-| `calculate_other_metrics.py` | 计算基于依存的指标（自定义）、QuanSyn 和 LeoDDcalculator 指标 | Stanza、QuanSyn、ufal.udpipe         |
-| `calculate_neosca.py`        | 仅计算 NeoSCA 句法复杂度指标                                 | NeoSCA                                             |
+| `run_metrics.py`             | 统一入口，按 `metrics_config.json` 启用/禁用计算方法           | 取决于配置启用项                                  |
+| `metrics_config.json`        | 默认配置：路径、断点续传、输出列、计算方法开关                 | —                                                  |
+| `metric_modules/`            | 自定义、QuanSyn、NeoSCA、管线调度等模块化实现                  | Stanza、QuanSyn、NeoSCA、ufal.udpipe              |
+| `calculate_all_metrics.py`   | 兼容入口：强制计算全部指标（自定义 + QuanSyn + NeoSCA + LeoDD） | Stanza、QuanSyn、NeoSCA、ufal.udpipe |
+| `calculate_other_metrics.py` | 兼容入口：计算自定义、QuanSyn 和 LeoDDcalculator 指标          | Stanza、QuanSyn、ufal.udpipe         |
+| `calculate_neosca.py`        | 兼容入口：仅计算 NeoSCA 句法复杂度指标                         | NeoSCA                                             |
 | `leo_dd_python.py`           | 复刻 LeoDDcalculator 的 MDD/NDD 文件夹计算流程                | ufal.udpipe                                       |
 
 ---

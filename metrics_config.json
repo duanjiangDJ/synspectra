@@ -1,0 +1,31 @@
+{
+  "source_dir": "source",
+  "result_dir": "result",
+  "resume": true,
+  "cleanup_leo_results": true,
+  "output_suffix": "",
+  "methods": {
+    "custom": true,
+    "leo": true,
+    "quansyn": true,
+    "neosca": false
+  },
+  "output_fields": [
+    "filename",
+    "MHDD", "AlphaDepLength", "MDD", "NDD",
+    "MDD_Leo", "NDD_Leo",
+    "MDD_quansyn", "NDD_quansyn",
+    "MHD", "MV", "VK", "MTW", "MTH", "HI", "HF", "MTDL", "MSL"
+  ],
+  "stanza": {
+    "processors": "tokenize,pos,lemma,depparse",
+    "use_gpu": false,
+    "verbose": false
+  },
+  "leo": {
+    "language_model_folder": "C:/"
+  },
+  "neosca": {
+    "timeout": 1000
+  }
+}
