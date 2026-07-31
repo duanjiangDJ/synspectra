@@ -7,10 +7,9 @@ from typing import Any
 
 import stanza
 
-from leo_dd_python import calculate_folder_mdd_ndd
-
 from .custom_metrics import compute_custom_metrics
 from .fields import fields_for_methods
+from .leo_dd import calculate_folder_mdd_ndd
 from .neosca_metrics import compute_neosca_metrics
 from .quansyn_metrics import compute_quansyn_text_metrics
 from .stanza_conllu import text_to_conllu

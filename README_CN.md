@@ -62,13 +62,9 @@ project-root/
 │     └── ...
 ├── result/                              # 输出目录（自动创建）
 │ └── category_name.csv                  # 每个类别的最终 CSV 文件
-├── calculate_all_metrics.py             # 主脚本：合并计算流程
-├── calculate_other_metrics.py           # 独立脚本：自定义 + QuanSyn + Leo
-├── calculate_neosca.py                  # 独立脚本：仅 NeoSCA
-├── run_metrics.py                        # 统一入口：按配置启用/禁用计算方法
+├── run_metrics.py                       # 统一入口：按配置或命令行启用/禁用计算方法
 ├── metrics_config.json                   # 计算方法、输出列和路径配置
 ├── metric_modules/                       # 模块化计算实现
-├── leo_dd_python.py                      # LeoDDcalculator 的 Python 复刻实现
 ├── requirements.txt                     # Python 依赖
 └── README.md                            # 本文件
 ```
@@ -210,7 +206,7 @@ python -m neosca filepath.txt # 此处filepath.txt为文件名称
 
 ### 5. UDPipe 与 LeoDD Python 复刻
 
-本项目已将原先通过 R 包 `leoDDcalculator` 调用的 `mdd_ndd_calculate()` 逻辑复刻到 Python 模块 `leo_dd_python.py` 中。主流程不再需要安装 R、Rtools、R 包或 `rpy2`。
+本项目已将原先通过 R 包 `leoDDcalculator` 调用的 `mdd_ndd_calculate()` 逻辑复刻到 Python 模块 `metric_modules/leo_dd.py` 中。主流程不再需要安装 R、Rtools、R 包或 `rpy2`。
 
 Python 复刻版仍使用 LeoDDcalculator 原函数相同的 UDPipe 英文模型与公式：每句排除 `root` 与 `punct` 依存关系后计算 MDD，并使用 `abs(log(mdd / sqrt(sent_length * root_distance)))` 计算 NDD。
 
@@ -227,7 +223,7 @@ pip install ufal.udpipe
 - **模型文件：** `english-ewt-ud-2.4-190531.udpipe`
 - **下载链接：** [https://github.com/jwijffels/udpipe.models.ud.2.4/blob/master/inst/udpipe-ud-2.4-190531/english-ewt-ud-2.4-190531.udpipe](https://github.com/jwijffels/udpipe.models.ud.2.4/blob/master/inst/udpipe-ud-2.4-190531/english-ewt-ud-2.4-190531.udpipe)
 
-将下载的 `.udpipe` 文件放置到 **C 盘根目录**（`C:/`），默认完整路径为 `C:/english-ewt-ud-2.4-190531.udpipe`。如有需要，可在 `leo_dd_python.py` 或调用 `calculate_folder_mdd_ndd()` 时自定义模型路径。
+将下载的 `.udpipe` 文件放置到 **C 盘根目录**（`C:/`），默认完整路径为 `C:/english-ewt-ud-2.4-190531.udpipe`。如有需要，可在 `metrics_config.json` 的 `leo.language_model_folder` 中自定义模型目录。
 
 ---
 
@@ -267,11 +263,11 @@ pip install -r requirements.txt
 
 ### 2. 配置 UDPipe 模型路径
 
-默认路径为 `C:/english-ewt-ud-2.4-190531.udpipe`。如果模型放在其他位置，请在 `leo_dd_python.py` 或 `calculate_folder_mdd_ndd()` 的调用参数中修改模型路径。
+默认路径为 `C:/english-ewt-ud-2.4-190531.udpipe`。如果模型放在其他位置，请在 `metrics_config.json` 的 `leo.language_model_folder` 中修改模型目录。
 
 ### 3. 选择启用的计算方法
 
-默认统一入口读取 `metrics_config.json`。可在 `methods` 中自由启用或禁用各计算方法：
+统一入口为 `run_metrics.py`。默认读取 `metrics_config.json`，可在 `methods` 中自由启用或禁用各计算方法：
 
 ```json
 {
@@ -292,29 +288,20 @@ pip install -r requirements.txt
 python run_metrics.py --config metrics_config.json
 ```
 
-### 计算所有指标
+也可以不修改配置，直接使用命令行预设或方法列表：
 
 ```bash
-python calculate_all_metrics.py
+python run_metrics.py --preset other   # 自定义 + LeoDD Python 复刻 + QuanSyn
+python run_metrics.py --preset all     # 启用全部方法
+python run_metrics.py --preset neosca  # 仅 NeoSCA，输出后缀为 _NeoSCA
+python run_metrics.py --methods custom,leo,quansyn --no-resume
 ```
 
 脚本将：
 - 遍历 `source/` 下的每个子文件夹。
 - 对每个 `.txt` 文件，清洗文本并计算所有指标。
 - 逐步将结果写入 `result/<类别名称>.csv`。
-- 支持断点续传：如果运行中断，重新运行将自动跳过已处理的文件。
-
-### 运行独立脚本
-
-如果只需要部分指标：
-
-```bash
-# 自定义 + QuanSyn + LeoDDcalculator
-python calculate_other_metrics.py
-
-# 仅 NeoSCA 句法复杂度
-python calculate_neosca.py
-```
+- 支持断点续传：如果运行中断，重新运行将自动跳过已处理的文件；如需强制重算可使用 `--no-resume`。
 
 ---
 
@@ -364,13 +351,9 @@ result/
 
 | 脚本                         | 描述                                                         | 依赖                                               |
 | ---------------------------- | ------------------------------------------------------------ | -------------------------------------------------- |
-| `run_metrics.py`             | 统一入口，按 `metrics_config.json` 启用/禁用计算方法           | 取决于配置启用项                                  |
+| `run_metrics.py`             | 根目录唯一 Python 入口，按配置、预设或 `--methods` 启用/禁用计算方法 | 取决于配置启用项                                  |
 | `metrics_config.json`        | 默认配置：路径、断点续传、输出列、计算方法开关                 | —                                                  |
-| `metric_modules/`            | 自定义、QuanSyn、NeoSCA、管线调度等模块化实现                  | Stanza、QuanSyn、NeoSCA、ufal.udpipe              |
-| `calculate_all_metrics.py`   | 兼容入口：强制计算全部指标（自定义 + QuanSyn + NeoSCA + LeoDD） | Stanza、QuanSyn、NeoSCA、ufal.udpipe |
-| `calculate_other_metrics.py` | 兼容入口：计算自定义、QuanSyn 和 LeoDDcalculator 指标          | Stanza、QuanSyn、ufal.udpipe         |
-| `calculate_neosca.py`        | 兼容入口：仅计算 NeoSCA 句法复杂度指标                         | NeoSCA                                             |
-| `leo_dd_python.py`           | 复刻 LeoDDcalculator 的 MDD/NDD 文件夹计算流程                | ufal.udpipe                                       |
+| `metric_modules/`            | 自定义、LeoDD、QuanSyn、NeoSCA、管线调度等模块化实现           | Stanza、QuanSyn、NeoSCA、ufal.udpipe              |
 
 ---
 

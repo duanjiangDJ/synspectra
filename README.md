@@ -62,13 +62,9 @@ project-root/
 │       └── ...
 ├── result/                              # Output directory (auto-created)
 │   └── category_name.csv                # Final CSV per category
-├── calculate_all_metrics.py             # Main script: combined pipeline
-├── calculate_other_metrics.py           # Standalone: Custom + QuanSyn + LeoDD
-├── calculate_neosca.py                  # Standalone: NeoSCA only
-├── run_metrics.py                        # Unified configurable entry point
+├── run_metrics.py                       # Unified configurable entry point
 ├── metrics_config.json                   # Method, output field, and path configuration
 ├── metric_modules/                       # Modular metric implementations
-├── leo_dd_python.py                      # Python reimplementation of LeoDDcalculator
 ├── requirements.txt                     # Python dependencies
 └── README.md                            # This file
 ```
@@ -218,7 +214,7 @@ If it runs successfully and a `result.csv` file is generated in the same directo
 
 ### 5. UDPipe and LeoDD Python Reimplementation
 
-This project now reimplements the original R package `leoDDcalculator` function `mdd_ndd_calculate()` in Python as `leo_dd_python.py`. The main scripts no longer require R, Rtools, R packages, or `rpy2`.
+This project now reimplements the original R package `leoDDcalculator` function `mdd_ndd_calculate()` in Python as `metric_modules/leo_dd.py`. The main pipeline no longer requires R, Rtools, R packages, or `rpy2`.
 
 The Python version uses the same UDPipe English model and formula as the original function: it excludes `root` and `punct` dependencies when computing sentence-level MDD, then computes NDD with `abs(log(mdd / sqrt(sent_length * root_distance)))`.
 
@@ -235,7 +231,7 @@ Download the English language model for `UDPipe`:
 - **Model file:** `english-ewt-ud-2.4-190531.udpipe`
 - **Download URL:** [https://github.com/jwijffels/udpipe.models.ud.2.4/blob/master/inst/udpipe-ud-2.4-190531/english-ewt-ud-2.4-190531.udpipe](https://github.com/jwijffels/udpipe.models.ud.2.4/blob/master/inst/udpipe-ud-2.4-190531/english-ewt-ud-2.4-190531.udpipe)
 
-Place the downloaded `.udpipe` file in the **root of your C: drive** (`C:/`), so the default full path is `C:/english-ewt-ud-2.4-190531.udpipe`. You may customize this path in `leo_dd_python.py` or when calling `calculate_folder_mdd_ndd()`.
+Place the downloaded `.udpipe` file in the **root of your C: drive** (`C:/`), so the default full path is `C:/english-ewt-ud-2.4-190531.udpipe`. You may customize the model folder in `metrics_config.json` under `leo.language_model_folder`.
 
 ---
 
@@ -275,11 +271,11 @@ Organize your `.txt` files under `source/<category>/` as described in [File Stru
 
 ### 2. Configure the UDPipe Model Path
 
-The default path is `C:/english-ewt-ud-2.4-190531.udpipe`. If you place the model elsewhere, update the path in `leo_dd_python.py` or in the call to `calculate_folder_mdd_ndd()`.
+The default path is `C:/english-ewt-ud-2.4-190531.udpipe`. If you place the model elsewhere, update `leo.language_model_folder` in `metrics_config.json`.
 
 ### 3. Choose Enabled Methods
 
-The unified entry point reads `metrics_config.json`. Toggle individual methods in the `methods` section:
+The only root-level Python entry point is `run_metrics.py`. By default it reads `metrics_config.json`; toggle individual methods in the `methods` section:
 
 ```json
 {
@@ -300,29 +296,20 @@ Run the configurable pipeline with:
 python run_metrics.py --config metrics_config.json
 ```
 
-###  Calculate all metrics
+You can also use built-in presets or a comma-separated method list without editing the config file:
 
 ```bash
-python calculate_all_metrics.py
+python run_metrics.py --preset other   # Custom + LeoDD Python reimplementation + QuanSyn
+python run_metrics.py --preset all     # Enable every method
+python run_metrics.py --preset neosca  # NeoSCA only, with _NeoSCA output suffix
+python run_metrics.py --methods custom,leo,quansyn --no-resume
 ```
 
 The script will:
 - Traverse each subfolder under `source/`.
 - For each `.txt` file, clean the text and compute all metrics.
 - Write results progressively to `result/<category_name>.csv`.
-- Support checkpoint/resume: if interrupted, rerunning will automatically skip already-processed files.
-
-### 4. Running Standalone Scripts
-
-If you only need a subset of metrics:
-
-```bash
-# Dependency metrics + QuanSyn + LeoDDcalculator
-python calculate_other_metrics.py
-
-# NeoSCA syntactic complexity only
-python calculate_neosca.py
-```
+- Support checkpoint/resume: if interrupted, rerunning will automatically skip already-processed files. Use `--no-resume` to force recomputation.
 
 ---
 
@@ -372,13 +359,9 @@ Each CSV contains the following columns:
 
 | Script | Description | Dependencies |
 |---|---|---|
-| `run_metrics.py` | Unified entry point controlled by `metrics_config.json` | Depends on enabled methods |
+| `run_metrics.py` | The only root-level Python entry point; controlled by config, presets, or `--methods` | Depends on enabled methods |
 | `metrics_config.json` | Default paths, resume behavior, output fields, and method switches | — |
-| `metric_modules/` | Modular implementations for custom, QuanSyn, NeoSCA, and pipeline orchestration | Stanza, QuanSyn, NeoSCA, ufal.udpipe |
-| `calculate_all_metrics.py` | Compatibility entry point: computes all metrics (custom + QuanSyn + NeoSCA + LeoDD) | Stanza, QuanSyn, NeoSCA, ufal.udpipe |
-| `calculate_other_metrics.py` | Compatibility entry point: computes custom, QuanSyn, and LeoDDcalculator metrics | Stanza, QuanSyn, ufal.udpipe |
-| `calculate_neosca.py` | Compatibility entry point: computes only NeoSCA syntactic complexity metrics | NeoSCA |
-| `leo_dd_python.py` | Reimplements the LeoDDcalculator MDD/NDD folder workflow | ufal.udpipe |
+| `metric_modules/` | Modular implementations for custom, LeoDD, QuanSyn, NeoSCA, and pipeline orchestration | Stanza, QuanSyn, NeoSCA, ufal.udpipe |
 
 ---
 

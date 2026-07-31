@@ -5,7 +5,10 @@ import json
 import os
 from typing import Any
 
-from .fields import OTHER_OUTPUT_FIELDS
+from .fields import ALL_OUTPUT_FIELDS, NEOSCA_OUTPUT_FIELDS, OTHER_OUTPUT_FIELDS, fields_for_methods
+
+
+VALID_METHODS = ("custom", "leo", "quansyn", "neosca")
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -53,3 +56,23 @@ def load_config(config_path: str | None = "metrics_config.json") -> dict[str, An
     with open(config_path, "r", encoding="utf-8") as f:
         user_config = json.load(f)
     return deep_merge(config, user_config)
+
+
+def set_methods(config: dict[str, Any], methods: set[str], output_fields: list[str] | None = None) -> None:
+    config["methods"] = {method: method in methods for method in VALID_METHODS}
+    config["output_fields"] = output_fields or fields_for_methods(
+        config["methods"],
+        include_all_quansyn=bool(config.get("include_all_quansyn_fields", False)),
+    )
+
+
+def apply_preset(config: dict[str, Any], preset: str) -> None:
+    if preset == "all":
+        set_methods(config, set(VALID_METHODS), ALL_OUTPUT_FIELDS)
+        config["output_suffix"] = ""
+    elif preset == "other":
+        set_methods(config, {"custom", "leo", "quansyn"}, OTHER_OUTPUT_FIELDS)
+        config["output_suffix"] = ""
+    elif preset == "neosca":
+        set_methods(config, {"neosca"}, NEOSCA_OUTPUT_FIELDS)
+        config["output_suffix"] = "_NeoSCA"
