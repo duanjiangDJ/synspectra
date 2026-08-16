@@ -14,7 +14,7 @@ jobs:
           - os: windows-latest
             bundle: "--win"
           - os: macos-latest
-            bundle: "--universal"
+            bundle: "--mac"
           - os: ubuntu-latest
             bundle: "--linux"
     runs-on: ${{ matrix.os }}
@@ -60,14 +60,15 @@ jobs:
           Expand-Archive uv.zip uvdir
           "UV_BIN=$((Get-Location).Path)\uvdir\uv.exe" >> $env:GITHUB_ENV
 
-      - name: Fetch uv (macOS)
+      - name: Fetch uv (macOS, both architectures)
         if: matrix.os == 'macos-latest'
         run: |
-          ARCH=$(uname -m)
-          if [ "$ARCH" = "arm64" ]; then UV_ARCH=aarch64; else UV_ARCH=x86_64; fi
-          curl -L "https://github.com/astral-sh/uv/releases/download/0.12.3/uv-${UV_ARCH}-apple-darwin.tar.gz" -o uv.tar.gz
-          tar -xzf uv.tar.gz
-          echo "UV_BIN=$PWD/uv-${UV_ARCH}-apple-darwin/uv" >> "$GITHUB_ENV"
+          for ARCH in aarch64 x86_64; do
+            curl -L "https://github.com/astral-sh/uv/releases/download/0.12.3/uv-${ARCH}-apple-darwin.tar.gz" -o uv-${ARCH}.tar.gz
+            tar -xzf uv-${ARCH}.tar.gz
+          done
+          echo "UV_ARM64=$PWD/uv-aarch64-apple-darwin/uv" >> "$GITHUB_ENV"
+          echo "UV_X64=$PWD/uv-x86_64-apple-darwin/uv" >> "$GITHUB_ENV"
 
       - name: Fetch uv (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -92,7 +93,20 @@ jobs:
         shell: bash
         run: echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
 
-      - name: Package desktop app
+      # The universal mac build cannot merge a single-arch uv binary, so
+      # produce separate arm64 and x64 dmgs, each with its matching uv.
+      - name: Package desktop app (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: desktop
+        run: |
+          UV_BIN="$UV_ARM64" node scripts/prepack.mjs
+          npm run build
+          npx electron-builder --mac --arm64 --publish never
+          UV_BIN="$UV_X64" node scripts/prepack.mjs
+          npx electron-builder --mac --x64 --publish never
+
+      - name: Package desktop app (Windows/Linux)
+        if: matrix.os != 'macos-latest'
         working-directory: desktop
         run: npm run build && npx electron-builder ${{ matrix.bundle }} --publish never
 
