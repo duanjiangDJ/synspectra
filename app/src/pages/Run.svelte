@@ -150,7 +150,7 @@
     {#if stageDetail}
       <div class="stage-detail-row">
         {#if workersActive > 0}
-          <span class="parallel-badge">⚡ {$workersActive} workers</span>
+          <span class="parallel-badge">⚡ {workersActive} workers</span>
         {/if}
         <span class="muted small stage-detail-text">{stageDetail}</span>
       </div>
