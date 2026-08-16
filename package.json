@@ -1,0 +1,14 @@
+{
+  "name": "syntactic-metrics-workspace",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Workspace for the syntactic complexity metrics toolkit (web app + Electron desktop carrier).",
+  "workspaces": [
+    "app",
+    "desktop"
+  ],
+  "scripts": {
+    "check": "npm run check --workspace app && npm run typecheck --workspace desktop",
+    "build": "npm run build --workspace app && npm run build --workspace desktop"
+  }
+}

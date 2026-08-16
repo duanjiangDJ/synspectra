@@ -20,6 +20,8 @@
 - [输出文件](#输出文件)
 - [脚本说明](#脚本说明)
 - [断点续传](#断点续传)
+- [结构化日志（JSONL）](#结构化日志jsonl)
+- [前端与桌面应用打包](#前端与桌面应用打包)
 - [引用本项目](#引用本项目)
 - [许可证](#许可证)
 
@@ -65,7 +67,11 @@ project-root/
 ├── run_metrics.py                       # 统一入口：按配置或命令行启用/禁用计算方法
 ├── metrics_config.json                   # 计算方法、输出列和路径配置
 ├── metric_modules/                       # 模块化计算实现
-├── requirements.txt                     # Python 依赖
+├── requirements.txt / requirements.lock  # Python 依赖与受管运行时的哈希锁文件
+├── app/                                 # Web 前端（Svelte 5 + TypeScript + Vite，浏览器优先）
+├── desktop/                             # Electron 桌面载体（loopback 服务 + 原生能力）
+├── docs/                                # 后端 JSONL 契约与 Bridge 协议
+├── resources/resource_manifest.json     # 桌面资源清单（模型/JRE/Stanford 工具，含 SHA-256）
 └── README.md                            # 本文件
 ```
 
@@ -143,6 +149,8 @@ stanza.download('en')  # 下载神经网络流程的英文模型
 ```
 
 此步骤将下载约 500 MB 的模型文件至 `~/stanza_resources/`。如果使用 Jupyter notebook，请使用 `stanza.download('en', force=True)` 跳过确认提示。
+
+**运行时离线模式：** 默认配置 `metrics_config.json` 使用 `download_method: "none"`（Stanza 1.9+），运行指标时完全不访问网络；模型缺失时会直接报错而不是尝试下载。如需运行时允许补充下载缺失模型，可改回 `"reuse_resources"`。
 
 ---
 
@@ -282,6 +290,19 @@ pip install -r requirements.txt
 
 如果只想输出部分列，可同步调整 `output_fields`。默认配置与当前 `result/text.csv` 一致：启用自定义、LeoDD Python 复刻和 QuanSyn，关闭 NeoSCA。
 
+### 4. 性能配置（并行与批处理）
+
+默认配置已开启两项加速，均可在 `metrics_config.json` 中调整：
+
+| 配置键 | 默认 | 说明 |
+| --- | --- | --- |
+| `stanza.workers` | 4 | Stanza 解析的并行进程数（每个 worker 约占用 2~3 GB 内存；设为 1 即串行） |
+| `neosca.batch_size` | 10 | 每次 JVM 调用批量处理的文件数（越大越省 JVM 启动开销） |
+| `neosca.timeout` | 300 | 单批次的超时秒数（原按单文件计算） |
+| `neosca.max_length` | 300 | 单句最长词数，超长句跳过解析，防止单个病态文件拖死整批 |
+
+内存不足时调低 `stanza.workers`；机器核数更多时可调高（建议不超过核心数的一半）。指标输出与串行模式完全一致（回归验证 `mismatches []`）。
+
 使用统一入口运行：
 
 ```bash
@@ -354,6 +375,10 @@ result/
 | `run_metrics.py`             | 根目录唯一 Python 入口，按配置、预设或 `--methods` 启用/禁用计算方法 | 取决于配置启用项                                  |
 | `metrics_config.json`        | 默认配置：路径、断点续传、输出列、计算方法开关                 | —                                                  |
 | `metric_modules/`            | 自定义、LeoDD、QuanSyn、NeoSCA、管线调度等模块化实现           | Stanza、QuanSyn、NeoSCA、ufal.udpipe              |
+| `scripts/resource_manager.py` | 前端资源管理器后端：下载、校验、安全解压、安装/卸载/离线导入 | Python 标准库                                      |
+| `scripts/corpus_import.py`   | 语料扫描与导入：zip/目录识别分组、冲突处理、类别重命名/删除     | Python 标准库                                      |
+| `app/`                       | 浏览器优先的 Web 前端：通过 boot 注入 + WebSocket carrier 与壳通信 | Svelte 5、Vite                                  |
+| `desktop/`                   | Electron 桌面载体：loopback 服务器、进程监督、原生对话框、打包  | Electron、electron-builder                        |
 
 ---
 
@@ -364,6 +389,92 @@ result/
 - 已处理的文件名记录在输出 CSV 中。
 - 如果执行中断（如断电、崩溃），只需重新运行脚本——它将自动检测已处理的文件并从上次中断处继续。
 - LeoDD Python 复刻结果会被缓存并在多次运行中复用。**切勿擅自删除运行中的leo结果文件夹（如果你不知道一个文件夹为什么突然出现在那里，那最好别碰）**
+
+---
+
+## 结构化日志（JSONL）
+
+`run_metrics.py` 支持结构化事件输出，便于前端与自动化工具消费：
+
+```powershell
+.\.venv\Scripts\python.exe run_metrics.py --preset other --log-format jsonl
+.\.venv\Scripts\python.exe run_metrics.py --preset other --log-format jsonl --log-file run.jsonl
+```
+
+不指定 `--log-format` 时仍输出人类可读文本。JSONL 模式每行一个 JSON 事件，例如：
+
+```json
+{"type":"task","event":"start","task_id":"...","preset":"other","methods":["custom","leo","quansyn"]}
+{"type":"progress","task_id":"...","category":"text","file":"text1.txt","stage":"write","done":1,"total":6}
+{"type":"task","event":"end","task_id":"...","status":"success","output_files":["result/text.csv"]}
+```
+
+主要事件类型：`task`、`stage`、`progress`、`log`、`error`、`resource`、`selfcheck`。
+
+## 前端与桌面应用
+
+前端是**浏览器优先的 Web 应用**（Svelte 5 + TypeScript + Vite），桌面壳是**轻量 Electron 载体**：同一份 UI 代码在纯浏览器、开发模式与打包桌面应用中行为一致，UI 内不含任何平台分支。完整需求与设计见 `FRONTEND_REQUIREMENTS.md` 与 `FRONTEND_DESIGN.md`。
+
+### 架构（参考 DSHD 的 loopback carrier 模式）
+
+- `app/` 是唯一的 UI 代码库。它不 import 任何 Electron/Tauri API，只通过两种途径接入宿主：
+  1. `window.__SYNM_BOOT__`（由桌面壳注入，包含平台、路径与环境变量）；
+  2. loopback WebSocket carrier（`ws://127.0.0.1:<port>/carrier`，带每次启动随机的 token）。
+- `desktop/` 只负责“载体”：在 127.0.0.1 起 HTTP 静态服务（打包模式，注入 boot 与带 nonce 的 CSP）+ WebSocket carrier、spawn/kill 后端脚本并逐行转发 JSONL、原生目录/zip 选择、文件管理器、窗口置顶、uv 受管运行时引导。
+- 后端仍是 `run_metrics.py` / `scripts/resource_manager.py` / `scripts/corpus_import.py`，全部以 `--log-format jsonl` 输出事件，壳只做透明转发。
+- 协议细节见 `docs/bridge-protocol.md`，后端事件契约见 `docs/backend-contract.md`。
+
+### 开发模式
+
+```powershell
+# 首次安装（根目录，npm workspaces）
+npm install
+
+# 终端 1：Vite 开发服务器（HMR）
+npm run dev --workspace app
+
+# 终端 2：Electron 壳（加载 Vite 并注入 boot）
+npm run dev --workspace desktop
+```
+
+仅调试浏览器模式（不带窗口）：
+
+```powershell
+npm run headless --workspace desktop
+# 输出 HEADLESS_READY http://127.0.0.1:<port> ws://127.0.0.1:<port>/carrier token=...
+# 然后打开 http://localhost:5173/?ws=ws://127.0.0.1:<port>/carrier&token=<token>
+```
+
+自动化验证：
+
+```powershell
+npm run check --workspace app          # svelte-check + tsc
+npm run typecheck --workspace desktop  # tsc
+npm run smoke --workspace desktop      # boot 注入 + carrier RPC 往返
+npm run e2e --workspace desktop        # 页面渲染、扫描、CSV、进程事件流、杀进程
+```
+
+### 打包
+
+打包采用“轻量安装包 + 页面内按需安装”：安装包只包含前端产物、Electron 壳、`uv`、后端脚本与资源清单，不内置 Python、模型与 Java。首次启动后在“资源管理器”内安装：`uv` 下载受管 CPython 3.11 → 建 venv → 按 `requirements.lock` 安装依赖（CPU 版 torch）；UDPipe/Stanza 模型、Temurin JRE、Stanford Parser/Tregex 按需下载并校验 SHA-256。
+
+```powershell
+npm run dist:win   --workspace desktop    # NSIS 安装包
+npm run dist:mac   --workspace desktop    # dmg
+npm run dist:linux --workspace desktop    # deb + AppImage
+```
+
+产物输出到 `desktop/release/`；打包前 `scripts/prepack.mjs` 会把后端脚本、资源清单、`app/dist` 与 `uv` 二进制暂存到 `desktop/resources/`。三平台构建由 `.github/workflows/build.yml` 矩阵执行（macOS 与 Linux 的 `uv` 由 CI 下载）。
+
+平台要求：
+
+- Windows：Windows 10 1809 及以上 / Windows 11，x64（Electron 自带 Chromium，无需 WebView2）。
+- macOS：Apple Silicon 与 Intel（universal 单包覆盖两架构）；CI 产物为 ad-hoc 签名，首次打开需右键点击应用并选择打开；正式分发需 Apple Developer 签名与公证。
+- Linux：x64；Electron 自带运行时，AppImage 建议按文档安装系统库。
+
+> **重要：覆盖安装会清空数据目录。** 便携式设计下，默认数据目录位于安装目录内（exe 同级），NSIS 覆盖安装会先卸载旧版并**删除整个安装目录**，其中包括受管运行时（`venv`、`runtime`）、下载的模型（`models`、`stanza_resources`）、NeoSCA 工具链（`java`、`stanford`）、导入的语料（`source`）与全部结果（`result`）。**升级前请手动备份这些目录**（复制到安装目录之外），安装完成后复制回来；或在资源页把下载路径改为安装目录之外的持久位置（注意语料与结果仍默认在数据目录下）。
+>
+> 待办：macOS/Linux 实机验证通过 CI 矩阵完成；当前 Windows 侧已通过 `smoke`/E2E 与本地打包验证。
 
 ---
 

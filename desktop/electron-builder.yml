@@ -1,0 +1,37 @@
+appId: org.research.syntactic-metrics
+productName: Syntactic Metrics
+copyright: Copyright © Syntactic Metrics Team
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: resources/backend
+    to: backend
+  - from: resources/app-dist
+    to: app-dist
+  - from: resources/bin
+    to: bin
+win:
+  target:
+    - nsis
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: "Syntactic-Metrics-${version}-${arch}-Setup.${ext}"
+  shortcutName: "Syntactic Metrics"
+mac:
+  target:
+    - dmg
+  category: public.app-category.education
+  icon: build/icon.png
+linux:
+  target:
+    - deb
+    - AppImage
+  category: Education
+  icon: build/icon.png
+publish: null

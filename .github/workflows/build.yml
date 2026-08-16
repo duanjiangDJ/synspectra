@@ -1,0 +1,104 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundle: "--win"
+          - os: macos-latest
+            bundle: "--universal"
+          - os: ubuntu-latest
+            bundle: "--linux"
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile Python modules
+        run: python -m compileall -q run_metrics.py metric_modules scripts
+
+      - name: Install workspace dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check app
+        working-directory: app
+        run: npm run check
+
+      - name: Type-check desktop
+        working-directory: desktop
+        run: npm run typecheck
+
+      - name: Build web app
+        working-directory: app
+        run: npm run build
+
+      - name: Fetch uv (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/astral-sh/uv/releases/download/0.12.3/uv-x86_64-pc-windows-msvc.zip" -OutFile uv.zip
+          Expand-Archive uv.zip uvdir
+          "UV_BIN=$((Get-Location).Path)\uvdir\uv.exe" >> $env:GITHUB_ENV
+
+      - name: Fetch uv (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "arm64" ]; then UV_ARCH=aarch64; else UV_ARCH=x86_64; fi
+          curl -L "https://github.com/astral-sh/uv/releases/download/0.12.3/uv-${UV_ARCH}-apple-darwin.tar.gz" -o uv.tar.gz
+          tar -xzf uv.tar.gz
+          echo "UV_BIN=$PWD/uv-${UV_ARCH}-apple-darwin/uv" >> "$GITHUB_ENV"
+
+      - name: Fetch uv (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          curl -L "https://github.com/astral-sh/uv/releases/download/0.12.3/uv-x86_64-unknown-linux-gnu.tar.gz" -o uv.tar.gz
+          tar -xzf uv.tar.gz
+          echo "UV_BIN=$PWD/uv-x86_64-unknown-linux-gnu/uv" >> "$GITHUB_ENV"
+
+      - name: Stage assets (prepack)
+        working-directory: desktop
+        run: node scripts/prepack.mjs
+
+      - name: Resource manager smoke test
+        env:
+          PYTHONUTF8: "1"
+        run: python scripts/resource_manager.py --data-dir "${{ runner.temp }}/rm-data" --log-format jsonl status
+
+      # On macOS keep the default ad-hoc signing: Apple Silicon refuses to
+      # run completely unsigned apps. Windows/Linux skip signing entirely.
+      - name: Disable code signing (non-macOS)
+        if: matrix.os != 'macos-latest'
+        shell: bash
+        run: echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+
+      - name: Package desktop app
+        working-directory: desktop
+        run: npx electron-builder ${{ matrix.bundle }} --publish never
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: syntactic-metrics-${{ matrix.os }}
+          path: desktop/release/**
+          if-no-files-found: error

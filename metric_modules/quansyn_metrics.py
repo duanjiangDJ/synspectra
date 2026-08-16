@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from quansyn.depval import DepValAnalyzer
 
+from . import event_logger
+
 
 QUANSYN_METRICS = ["mhd", "tdl", "sl", "mv", "vk", "hi", "hf", "mtw", "mth", "mtdl", "msl", "mdd", "ndd"]
 QUANSYN_RENAME_MAP = {
@@ -26,7 +28,12 @@ def compute_quansyn_text_metrics(conllu_str: str) -> dict[str, float | str]:
         analyzer = DepValAnalyzer(conllu_str)
         text_metrics = analyzer.calculate_text_metrics(metrics=QUANSYN_METRICS)
     except Exception as exc:
-        print(f"QuanSyn calculation failed: {exc}")
+        event_logger.error(
+            "QUANSYN_CALC_FAILED",
+            "QuanSyn calculation failed",
+            str(exc),
+            "Check the CoNLL-U input from Stanza.",
+        )
         return {}
 
     result: dict[str, float | str] = {}

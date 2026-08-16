@@ -20,12 +20,16 @@
   "stanza": {
     "processors": "tokenize,pos,lemma,depparse",
     "use_gpu": false,
-    "verbose": false
+    "verbose": false,
+    "download_method": "none",
+    "workers": 4
   },
   "leo": {
     "language_model_folder": "C:/"
   },
   "neosca": {
-    "timeout": 1000
+    "timeout": 300,
+    "batch_size": 10,
+    "max_length": 300
   }
 }

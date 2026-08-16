@@ -1,0 +1,13 @@
+# Input pins for requirements.lock (managed desktop runtime).
+# Regenerate with:
+#   uv pip compile requirements.in -o requirements.lock --generate-hashes --universal --python-version 3.11 --extra-index-url https://download.pytorch.org/whl/cpu
+# Versions below are the known-good combination used by the development venv.
+torch==2.11.0+cpu ; sys_platform == 'win32' or sys_platform == 'linux'
+torch==2.11.0 ; sys_platform == 'darwin'
+stanza==1.11.1
+quansyn==0.1.2
+pandas==3.0.2
+ufal.udpipe==1.4.0.1
+neosca>=0.0.55
+nltk>=3.8
+conllu>=4.0

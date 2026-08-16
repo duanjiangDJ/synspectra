@@ -128,17 +128,20 @@ def calculate_folder_mdd_ndd(
     texts_folder: str,
     language_model_folder: str = "C:/",
     results_folder: str | None = None,
+    progress_cb=None,
 ) -> tuple[dict[str, dict[str, float]], str]:
     model_path = os.path.join(language_model_folder, "english-ewt-ud-2.4-190531.udpipe")
     pipeline = load_udpipe_pipeline(model_path)
-    results_folder = results_folder or f"{texts_folder.rstrip('/\\')}_results_dd"
+    texts_folder_stripped = texts_folder.rstrip("/\\")
+    results_folder = results_folder or f"{texts_folder_stripped}_results_dd"
     os.makedirs(results_folder, exist_ok=True)
 
     metrics: dict[str, dict[str, float]] = {}
     summary_rows: list[dict[str, str]] = []
     txt_files = [name for name in os.listdir(texts_folder) if name.endswith(".txt")]
+    total_files = len(txt_files)
 
-    for filename in txt_files:
+    for index, filename in enumerate(txt_files, start=1):
         file_path = os.path.join(texts_folder, filename)
         with open(file_path, "r", encoding="utf-8") as f:
             text = f.read()
@@ -158,6 +161,8 @@ def calculate_folder_mdd_ndd(
         file_id = os.path.splitext(filename)[0]
         metrics[filename] = {"MDD_Leo": mdd, "NDD_Leo": ndd}
         summary_rows.append({"file_id": file_id, "mdd": f"{mdd:.4f}", "ndd": f"{ndd:.4f}"})
+        if progress_cb is not None:
+            progress_cb(filename, index, total_files)
 
     summary_path = os.path.join(results_folder, "0mdd_ndd_results.csv")
     with open(summary_path, "w", newline="", encoding="utf-8") as csvfile:

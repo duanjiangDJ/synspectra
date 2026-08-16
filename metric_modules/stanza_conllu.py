@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from . import event_logger
+
 
 def text_to_conllu(text: str, nlp) -> str:
     try:
         doc = nlp(text)
     except Exception as exc:
-        print(f"Stanza parsing failed: {exc}")
+        event_logger.error(
+            "STANZA_PARSE_FAILED",
+            "Stanza parsing failed",
+            str(exc),
+            "Check the Stanza model and input text encoding.",
+        )
         return ""
 
     conllu_lines: list[str] = []

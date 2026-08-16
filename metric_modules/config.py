@@ -28,12 +28,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "processors": "tokenize,pos,lemma,depparse",
         "use_gpu": False,
         "verbose": False,
+        "download_method": "none",
+        "workers": 4,
     },
     "leo": {
         "language_model_folder": "C:/",
     },
     "neosca": {
-        "timeout": 1000,
+        "timeout": 300,
+        "batch_size": 10,
+        "max_length": 300,
     },
 }
 

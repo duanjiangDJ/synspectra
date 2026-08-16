@@ -32,7 +32,11 @@
   - `config.py` 与 `fields.py`：默认配置、预设、方法开关和输出列。
   - `stanza_conllu.py` 与 `text_utils.py`：文本清洗与 CoNLL-U 转换等基础工具。
 - 不要重新引入根目录跳转脚本，例如 `calculate_all_metrics.py`、`calculate_other_metrics.py`、`calculate_neosca.py` 或类似兼容包装。
-- `result/`、`*_results_dd/`、`.venv/`、压缩包、`treebanks/`、`combine_index/`、`index/`、`__pycache__/` 均视为本地生成物、外部资源或环境文件，除非用户明确要求，否则不要纳入版本管理或修改其内容。
+- 前端是**浏览器优先的 Web 应用 + Electron 载体**（DSHD loopback carrier 模式）：
+  - `app/` 是唯一 UI 代码库（Svelte 5），禁止 import 任何 Electron/Tauri API，禁止平台分支；与宿主通信只通过 `window.__SYNM_BOOT__` 与 WebSocket carrier（契约见 `docs/bridge-protocol.md`）。
+  - `desktop/` 只做载体：loopback 服务器（boot 注入 + CSP）、进程监督、原生对话框、uv 引导、打包。新增原生能力 = 在 `desktop/src/methods.ts` 加 RPC 处理器并同步 `app/src/bridge/contracts.ts`，两端必须同时更新。
+  - Python 后端（`run_metrics.py`、`scripts/*.py`）保持不动，事件契约见 `docs/backend-contract.md`。
+- `result/`、`*_results_dd/`、`.venv/`、压缩包、`treebanks/`、`combine_index/`、`index/`、`__pycache__/`、`node_modules/`、`.desktop-data/`、`desktop/release/`、`desktop/resources/` 均视为本地生成物、外部资源或环境文件，除非用户明确要求，否则不要纳入版本管理或修改其内容。
 
 ## 配置与运行流程
 
@@ -88,6 +92,25 @@ Set-Location 'e:\DMU\research\textAnalyse\index'
 Set-Location 'e:\DMU\research\textAnalyse\index'
 git diff --check
 .\.venv\Scripts\python.exe run_metrics.py --help
+```
+
+### 前端（app/、desktop/）改动
+
+```powershell
+Set-Location 'e:\DMU\research\textAnalyse\index'
+npm run check --workspace app
+npm run typecheck --workspace desktop
+npm run build --workspace app
+npm run smoke --workspace desktop
+npm run e2e --workspace desktop
+```
+
+涉及 carrier 协议、进程监督或受管运行时时，还应运行全链路集成测试（会下载/复用受管运行时）：
+
+```powershell
+Set-Location 'e:\DMU\research\textAnalyse\index'
+# 终端 1：npm run headless --workspace desktop（记录输出的 ws 地址与 token）
+node desktop\scripts\integration-test.mjs <wsUrl> <token>
 ```
 
 ### Python 代码改动
@@ -165,6 +188,14 @@ Remove-Item -Recurse -Force $tmp.FullName
 ### 依赖改动
 
 - 新增 Python 依赖时，必须更新 `requirements.txt`。
+- 受管桌面运行时的哈希锁文件 `requirements.lock` 由 `requirements.in` 生成（跨平台 universal，torch 固定 CPU 版），命令：
+
+```powershell
+Set-Location 'e:\DMU\research\textAnalyse\index'
+.\.venv\Scripts\uv.exe pip compile requirements.in -o requirements.lock --generate-hashes --universal --python-version 3.11 --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+- 升级依赖后必须重跑集成测试（`desktop/scripts/integration-test.mjs`），确认受管运行时能跑通 `--preset other`。
 - 安装包前确认使用工作区虚拟环境 `.venv/`。
 - 不提交 Stanza 模型、UDPipe 模型、Java、NeoSCA 下载资源或任何大型外部资产。
 

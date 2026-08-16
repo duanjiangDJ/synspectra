@@ -1,0 +1,95 @@
+{
+  "manifest_version": 1,
+  "note": "SHA-256 values are pinned during the packaging step. Empty values intentionally refuse installation.",
+  "resources": {
+    "stanza_model": {
+      "kind": "stanza",
+      "version": "latest",
+      "platforms": ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"],
+      "processors": "tokenize,pos,lemma,depparse",
+      "resources_url": "https://gh-proxy.com/https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main",
+      "model_url": "https://gh-proxy.com/https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main/models",
+      "target": "stanza_resources"
+    },
+    "udpipe_model": {
+      "kind": "file",
+      "version": "english-ewt-ud-2.4-190531",
+      "platforms": ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"],
+      "urls": {
+        "all": "https://raw.githubusercontent.com/jwijffels/udpipe.models.ud.2.4/master/inst/udpipe-ud-2.4-190531/english-ewt-ud-2.4-190531.udpipe"
+      },
+      "mirrors": [
+        "https://ghfast.top/https://raw.githubusercontent.com/jwijffels/udpipe.models.ud.2.4/master/inst/udpipe-ud-2.4-190531/english-ewt-ud-2.4-190531.udpipe"
+      ],
+      "sha256": "6f8844529c49368b0e9cca3012ba6777178df6a4d299c32e87e2fcb45f719fc1",
+      "size": 16477964,
+      "extract": false,
+      "target": "models/english-ewt-ud-2.4-190531.udpipe"
+    },
+    "jre": {
+      "kind": "archive",
+      "version": "17.0.20+8",
+      "platforms": ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"],
+      "urls": {
+        "windows-x64": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jre_x64_windows_hotspot_17.0.20_8.zip",
+        "macos-arm64": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jre_aarch64_mac_hotspot_17.0.20_8.tar.gz",
+        "macos-x64": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jre_x64_mac_hotspot_17.0.20_8.tar.gz",
+        "linux-x64": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jre_x64_linux_hotspot_17.0.20_8.tar.gz"
+      },
+      "mirrors": {
+        "windows-x64": [
+          "https://ghfast.top/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jre_x64_windows_hotspot_17.0.20_8.zip"
+        ],
+        "macos-arm64": [
+          "https://ghfast.top/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jre_aarch64_mac_hotspot_17.0.20_8.tar.gz"
+        ],
+        "macos-x64": [
+          "https://ghfast.top/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jre_x64_mac_hotspot_17.0.20_8.tar.gz"
+        ],
+        "linux-x64": [
+          "https://ghfast.top/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jre_x64_linux_hotspot_17.0.20_8.tar.gz"
+        ]
+      },
+      "sha256": {
+        "windows-x64": "7fe2324cc5901a89aaa0e8dc232075c59f2aca5270c533bdb1b861a5274af834",
+        "macos-arm64": "3d1adc835e2e21fb7f3297c42a39bf07b8de58a83f8f05e01cf6c2890694c663",
+        "macos-x64": "1f504265987954508cd2731520dcf356120c53c8d8196aab39cb1a4a50040d59",
+        "linux-x64": "ef491a51a46ef90cc47fbc4abb219fde32483ff91be5ec66ddc896df43524b27"
+      },
+      "size": {
+        "windows-x64": 43776637,
+        "macos-arm64": 42722304,
+        "macos-x64": 37637884,
+        "linux-x64": 46642500
+      },
+      "extract": true,
+      "target": "java"
+    },
+    "stanford_parser": {
+      "kind": "archive",
+      "version": "4.2.0",
+      "platforms": ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"],
+      "urls": {
+        "all": "https://downloads.cs.stanford.edu/nlp/software/stanford-parser-4.2.0.zip"
+      },
+      "mirrors": [],
+      "sha256": "8c2110c78f7f82b66bcf91089a18e415669eda4346bbd9a6e3bc2bde63e5fed1",
+      "size": 182285548,
+      "extract": true,
+      "target": "stanford/parser"
+    },
+    "stanford_tregex": {
+      "kind": "archive",
+      "version": "4.2.0",
+      "platforms": ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"],
+      "urls": {
+        "all": "https://downloads.cs.stanford.edu/nlp/software/stanford-tregex-4.2.0.zip"
+      },
+      "mirrors": [],
+      "sha256": "711490f3b2ae41ec9be91f3d7c9b192ad38ddda041f491505b49fc673bfc0401",
+      "size": 11321573,
+      "extract": true,
+      "target": "stanford/tregex"
+    }
+  }
+}

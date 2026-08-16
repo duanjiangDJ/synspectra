@@ -20,6 +20,8 @@ A comprehensive Python toolkit for computing multidimensional syntactic complexi
 - [Output Files](#output-files)
 - [Scripts Description](#scripts-description)
 - [Resume from Breakpoint](#resume-from-breakpoint)
+- [Structured JSONL Logging](#structured-jsonl-logging)
+- [Frontend & Desktop Packaging](#frontend--desktop-packaging)
 - [Citing This Project](#citing-this-project)
 - [License](#license)
 
@@ -65,7 +67,11 @@ project-root/
 ├── run_metrics.py                       # Unified configurable entry point
 ├── metrics_config.json                   # Method, output field, and path configuration
 ├── metric_modules/                       # Modular metric implementations
-├── requirements.txt                     # Python dependencies
+├── requirements.txt / requirements.lock  # Python deps + hash lockfile for the managed runtime
+├── app/                                 # Web frontend (Svelte 5 + TypeScript + Vite, browser-first)
+├── desktop/                             # Electron desktop carrier (loopback server + native capabilities)
+├── docs/                                # Backend JSONL contract and Bridge protocol
+├── resources/resource_manifest.json     # Desktop resource manifest (models/JRE/Stanford tools, SHA-256)
 └── README.md                            # This file
 ```
 
@@ -143,6 +149,8 @@ stanza.download('en')  # Downloads the English models for the neural pipeline
 ```
 
 This step will download approximately 500 MB of model files to `~/stanza_resources/`. If using a Jupyter notebook, use `stanza.download('en', force=True)` to bypass the confirmation prompt.
+
+**Offline runtime:** the default `metrics_config.json` uses `download_method: "none"` (Stanza 1.9+), so metric runs never touch the network; missing models raise an error instead of downloading. Switch back to `"reuse_resources"` to allow filling in missing models at run time.
 
 ---
 
@@ -290,6 +298,19 @@ The only root-level Python entry point is `run_metrics.py`. By default it reads 
 
 If you only want selected columns, update `output_fields` as well. The default config matches the current `result/text.csv`: custom metrics, LeoDD Python reimplementation, and QuanSyn enabled; NeoSCA disabled.
 
+### 4. Performance (parallelism & batching)
+
+Two accelerations are enabled by default and tunable in `metrics_config.json`:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `stanza.workers` | 4 | Parallel processes for Stanza parsing (each worker uses ~2–3 GB RAM; 1 = serial) |
+| `neosca.batch_size` | 10 | Files processed per single JVM invocation (larger saves JVM startups) |
+| `neosca.timeout` | 300 | Timeout in seconds per batch (previously per file) |
+| `neosca.max_length` | 300 | Longest sentence length; longer sentences are skipped to prevent a single pathological file from stalling a batch |
+
+Lower `stanza.workers` when memory is tight; raise it (up to roughly half the core count) on larger machines. Metric output is identical to serial mode (regression-verified `mismatches []`).
+
 Run the configurable pipeline with:
 
 ```bash
@@ -362,6 +383,10 @@ Each CSV contains the following columns:
 | `run_metrics.py` | The only root-level Python entry point; controlled by config, presets, or `--methods` | Depends on enabled methods |
 | `metrics_config.json` | Default paths, resume behavior, output fields, and method switches | — |
 | `metric_modules/` | Modular implementations for custom, LeoDD, QuanSyn, NeoSCA, and pipeline orchestration | Stanza, QuanSyn, NeoSCA, ufal.udpipe |
+| `scripts/resource_manager.py` | Frontend resource manager backend: download, verify, safe extraction, install/uninstall/offline import | Python standard library |
+| `scripts/corpus_import.py` | Corpus scan/import: zip/directory group detection, conflict handling, category rename/delete | Python standard library |
+| `app/` | Browser-first web frontend; talks to the shell via boot injection + WebSocket carrier | Svelte 5, Vite |
+| `desktop/` | Electron desktop carrier: loopback server, process supervision, native dialogs, packaging | Electron, electron-builder |
 
 ---
 
@@ -372,6 +397,92 @@ All scripts support **checkpoint/resume** functionality:
 - Processed filenames are recorded in the output CSV.
 - If execution is interrupted (e.g., power loss, crash), simply re-run the script — it will automatically detect already-processed files and continue from where it left off.
 - LeoDD Python reimplementation results are cached and reused across runs. **Do not delete the Leo results folder that appears during execution** (if you are unsure why a folder suddenly appeared, it is best to leave it alone).
+
+---
+
+## Structured JSONL Logging
+
+`run_metrics.py` supports structured event output for the frontend and automation:
+
+```powershell
+.\.venv\Scripts\python.exe run_metrics.py --preset other --log-format jsonl
+.\.venv\Scripts\python.exe run_metrics.py --preset other --log-format jsonl --log-file run.jsonl
+```
+
+Without `--log-format`, output remains human-readable text. In JSONL mode every line is a JSON event, for example:
+
+```json
+{"type":"task","event":"start","task_id":"...","preset":"other","methods":["custom","leo","quansyn"]}
+{"type":"progress","task_id":"...","category":"text","file":"text1.txt","stage":"write","done":1,"total":6}
+{"type":"task","event":"end","task_id":"...","status":"success","output_files":["result/text.csv"]}
+```
+
+Main event types: `task`, `stage`, `progress`, `log`, `error`, `resource`, `selfcheck`.
+
+## Frontend & Desktop App
+
+The frontend is a **browser-first web app** (Svelte 5 + TypeScript + Vite) and the desktop shell is a **thin Electron carrier**: the same UI behaves identically in a plain browser, in dev mode, and inside the packaged app, with zero platform branches in the UI. Full requirements and design are in `FRONTEND_REQUIREMENTS.md` and `FRONTEND_DESIGN.md`.
+
+### Architecture (DSHD-style loopback carrier)
+
+- `app/` is the only UI codebase. It never imports Electron/Tauri APIs; it attaches to its host through:
+  1. `window.__SYNM_BOOT__` (injected by the shell: platform, paths, environment);
+  2. a loopback WebSocket carrier (`ws://127.0.0.1:<port>/carrier`, protected by a per-launch random token).
+- `desktop/` only provides the carrier: an HTTP static server on 127.0.0.1 (packaged mode; injects boot + nonce-based CSP), the WebSocket carrier, spawn/kill of backend scripts with line-by-line JSONL forwarding, native directory/zip pickers, file-manager open, always-on-top, and the uv-managed runtime bootstrap.
+- The backend remains `run_metrics.py` / `scripts/resource_manager.py` / `scripts/corpus_import.py`, all emitting `--log-format jsonl` events that the shell forwards transparently.
+- Protocol details: `docs/bridge-protocol.md`; backend event contract: `docs/backend-contract.md`.
+
+### Development mode
+
+```powershell
+# First install (repo root, npm workspaces)
+npm install
+
+# Terminal 1: Vite dev server (HMR)
+npm run dev --workspace app
+
+# Terminal 2: Electron shell (loads Vite and injects boot)
+npm run dev --workspace desktop
+```
+
+Browser-only debugging (no window):
+
+```powershell
+npm run headless --workspace desktop
+# prints HEADLESS_READY http://127.0.0.1:<port> ws://127.0.0.1:<port>/carrier token=...
+# then open http://localhost:5173/?ws=ws://127.0.0.1:<port>/carrier&token=<token>
+```
+
+Automated verification:
+
+```powershell
+npm run check --workspace app          # svelte-check + tsc
+npm run typecheck --workspace desktop  # tsc
+npm run smoke --workspace desktop      # boot injection + carrier RPC round trip + UI render
+npm run e2e --workspace desktop        # page rendering, scans, CSV, process event stream, kill
+```
+
+### Packaging
+
+"Lightweight installer + on-demand in-app installation": the installer contains only the web build, the Electron shell, `uv`, backend scripts, and the resource manifest — no Python runtime, models, or Java. On first launch, the in-app Resource Manager installs what is needed: `uv` fetches managed CPython 3.11 → creates a venv → installs dependencies from `requirements.lock` (CPU-only torch); UDPipe/Stanza models, Temurin JRE, and Stanford Parser/Tregex are downloaded on demand and verified with SHA-256.
+
+```powershell
+npm run dist:win   --workspace desktop    # NSIS installer
+npm run dist:mac   --workspace desktop    # dmg
+npm run dist:linux --workspace desktop    # deb + AppImage
+```
+
+Artifacts go to `desktop/release/`; `desktop/scripts/prepack.mjs` stages the backend scripts, resource manifest, `app/dist`, and the `uv` binary into `desktop/resources/` before packaging. The three-platform build matrix lives in `.github/workflows/build.yml` (macOS/Linux fetch `uv` in CI).
+
+Platform requirements:
+
+- Windows: Windows 10 1809+ / Windows 11, x64 (Electron bundles Chromium; no WebView2 required).
+- macOS: Apple Silicon and Intel (a single universal build covers both); CI artifacts are ad-hoc signed, so the first launch requires right-clicking the app and choosing Open; official distribution requires Apple Developer signing and notarization.
+- Linux: x64; Electron bundles its own runtime; AppImage docs list suggested system libraries.
+
+> **Important: an overwrite install wipes the data directory.** With the portable layout, the default data directory sits inside the install directory (next to the executable); the NSIS overwrite installer uninstalls the old version first, deleting the entire install directory — including the managed runtime (`venv`, `runtime`), downloaded models (`models`, `stanza_resources`), the NeoSCA toolchain (`java`, `stanford`), the imported corpus (`source`) and all results (`result`). **Back these directories up outside the install directory before upgrading**, then copy them back afterwards; alternatively pick a persistent download path outside the install directory on the Resources page (note the corpus and results still default under the data directory).
+>
+> TODO: macOS/Linux real-machine verification runs through the CI matrix; the Windows side is verified with smoke/E2E and a local packaging run.
 
 ---
 
