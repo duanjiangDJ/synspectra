@@ -29,6 +29,8 @@
 
 ## 概述
 
+代码仓库（私有）：https://github.com/duanjiangDJ/syntactic-metrics
+
 本工具包为每篇英语文本计算超过 40 项句法复杂度指标，涵盖以下维度：
 
 - **依存距离**（线性与层级）：MDD、MHDD、NDD、AlphaDepLength
@@ -513,7 +515,7 @@ npm run dist:linux --workspace desktop    # deb + AppImage
 
 ## 许可证
 
-本项目采用 **GPL 3.0 License**。您可以在`LICENSE`中查看更多细节。
+本项目采用 **GNU General Public License v3.0**，全文见 [LICENSE](LICENSE) 文件。
 
 请注意：本项目使用的依赖项受其各自许可证的约束：
 

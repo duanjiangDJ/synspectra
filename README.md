@@ -29,6 +29,8 @@ A comprehensive Python toolkit for computing multidimensional syntactic complexi
 
 ## Overview
 
+Repository (private): https://github.com/duanjiangDJ/syntactic-metrics
+
 This toolkit computes over 40 syntactic complexity metrics for each English text, spanning the following dimensions:
 
 - **Dependency Distance** (linear & hierarchical): MDD, MHDD, NDD, AlphaDepLength
@@ -520,7 +522,7 @@ If you use this toolkit in your research, please cite this project along with th
 
 ## License
 
-This project is licensed under the **GPL 3.0 License**. See the `LICENSE` file for more details.
+This project is licensed under the **GNU General Public License v3.0** — see the [LICENSE](LICENSE) file for the full text.
 
 Note: The dependencies used in this project are governed by their own licenses:
 

@@ -4,6 +4,10 @@ on:
   push:
     branches: ["**"]
     tags: ["v*"]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
 
 jobs:
