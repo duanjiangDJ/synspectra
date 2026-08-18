@@ -29,7 +29,7 @@ A comprehensive Python toolkit for computing multidimensional syntactic complexi
 
 ## Overview
 
-Repository (private): https://github.com/duanjiangDJ/synspectra
+Repository: https://github.com/duanjiangDJ/synspectra
 
 This toolkit computes over 40 syntactic complexity metrics for each English text, spanning the following dimensions:
 

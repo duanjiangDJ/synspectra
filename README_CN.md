@@ -29,7 +29,7 @@
 
 ## 概述
 
-代码仓库（私有）：https://github.com/duanjiangDJ/synspectra
+代码仓库：https://github.com/duanjiangDJ/synspectra
 
 本工具包为每篇英语文本计算超过 40 项句法复杂度指标，涵盖以下维度：
 
