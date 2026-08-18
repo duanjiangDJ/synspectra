@@ -1,6 +1,6 @@
-appId: org.research.syntactic-metrics
-productName: Syntactic Metrics
-copyright: Copyright © Syntactic Metrics Team
+appId: org.research.synspectra
+productName: SynSpectra
+copyright: Copyright © SynSpectra Authors (Dalian Maritime University)
 directories:
   output: release
   buildResources: build
@@ -21,8 +21,8 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  artifactName: "Syntactic-Metrics-${version}-${arch}-Setup.${ext}"
-  shortcutName: "Syntactic Metrics"
+  artifactName: "SynSpectra-${version}-${arch}-Setup.${ext}"
+  shortcutName: "SynSpectra"
 mac:
   target:
     - dmg

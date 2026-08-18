@@ -147,7 +147,7 @@ function createWindow(ctx: DesktopContext, token: string): BrowserWindow {
     show: !isSmoke && !isE2e && !isE2eInstall,
     autoHideMenuBar: true,
     backgroundColor: "#f6f7f9",
-    title: "Syntactic Metrics",
+    title: "SynSpectra",
     ...frameOptions,
     webPreferences: {
       contextIsolation: true,

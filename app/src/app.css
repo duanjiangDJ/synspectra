@@ -783,3 +783,71 @@ html {
 .stage-detail-text {
   word-break: break-all;
 }
+
+/* SynSpectra brand in the title bar (left of the centered tabs) */
+.titlebar-brand {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  left: 78px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* About page */
+.about-brand {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  margin: var(--space-2) 0 0;
+}
+
+.about-authors {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 var(--space-1);
+}
+
+.about-method {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.about-method:last-of-type {
+  border-bottom: 0;
+}
+
+.about-method-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.about-method p {
+  margin: var(--space-1) 0;
+}
+
+.about-method-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+.about-link {
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.about-link:hover {
+  text-decoration: underline;
+}

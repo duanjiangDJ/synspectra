@@ -1,13 +1,13 @@
 {
-  "name": "syntactic-metrics-desktop",
+  "name": "synspectra-desktop",
   "private": true,
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Electron carrier shell for the syntactic complexity metrics toolkit",
   "author": {
     "name": "Syntactic Metrics Team",
     "email": "syntactic-metrics@users.noreply.github.com"
   },
-  "homepage": "https://github.com/duanjiangDJ/syntactic-metrics",
+  "homepage": "https://github.com/duanjiangDJ/synspectra",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",

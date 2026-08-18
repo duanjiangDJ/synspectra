@@ -45,6 +45,7 @@ export const E2E_SCRIPT = `
     { id: "run", heading: "运行", headingEn: "Run" },
     { id: "resources", heading: "资源管理器", headingEn: "Resource Manager" },
     { id: "results", heading: "结果", headingEn: "Results" },
+    { id: "about", heading: "关于", headingEn: "About" },
   ];
 
   const clickTab = (index) => {
@@ -79,8 +80,8 @@ export const E2E_SCRIPT = `
       }
 
       // 4. UI tabs render
-      await waitFor(() => document.querySelectorAll(".tabbar .tab").length === 5, 8000);
-      step("tabbar renders", document.querySelectorAll(".tabbar .tab").length === 5);
+      await waitFor(() => document.querySelectorAll(".tabbar .tab").length === 6, 8000);
+      step("tabbar renders", document.querySelectorAll(".tabbar .tab").length === 6);
       for (let i = 0; i < tabs.length; i++) {
         if (!clickTab(i)) break;
         const ok = await waitFor(() => {
@@ -89,7 +90,7 @@ export const E2E_SCRIPT = `
           const text = heading.textContent.trim();
           return text === tabs[i].heading || text === tabs[i].headingEn;
         }, 5000);
-        step("tab " + tabs[i].id, ok, ok ? "" : "heading mismatch");
+        step("tab " + tabs[i].id, ok, ok ? "" : "heading mismatch: " + (document.querySelector(".page-section h2")?.textContent?.trim() ?? "NO_H2"));
       }
 
       // 5. spawn backend and receive event stream (listen before spawn to

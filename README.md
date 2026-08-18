@@ -1,4 +1,4 @@
-# Multidimensional Syntactic Complexity Analyzer
+# SynSpectra · Multi-dimensional Syntactic Complexity Analyzer
 
 A comprehensive Python toolkit for computing multidimensional syntactic complexity metrics of English texts. This toolkit integrates four major computational approaches — custom formula-based implementations, **QuanSyn**, **NeoSCA**, and a Python reimplementation of the **LeoDDcalculator** formula using UDPipe — to provide a unified, reproducible pipeline for quantitative syntactic analysis.
 
@@ -29,7 +29,7 @@ A comprehensive Python toolkit for computing multidimensional syntactic complexi
 
 ## Overview
 
-Repository (private): https://github.com/duanjiangDJ/syntactic-metrics
+Repository (private): https://github.com/duanjiangDJ/synspectra
 
 This toolkit computes over 40 syntactic complexity metrics for each English text, spanning the following dimensions:
 

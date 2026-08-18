@@ -31,8 +31,7 @@ export function setLocale(next: Locale): void {
     localStorage.setItem(STORAGE_KEY, next);
   }
   document.documentElement.lang = next;
-  document.title =
-    next === "zh-CN" ? "句法复杂度分析工具" : "Syntactic Metrics Tool";
+  document.title = "SynSpectra";
 }
 
 function lookup(

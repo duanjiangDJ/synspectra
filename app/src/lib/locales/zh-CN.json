@@ -1,5 +1,5 @@
 {
-  "app.name": "句法复杂度分析工具",
+  "app.name": "SynSpectra",
   "nav.workspace": "工作区",
   "nav.config": "配置",
   "nav.run": "运行",
@@ -116,5 +116,18 @@
   "results.empty": "暂无结果",
   "results.preview": "预览",
   "results.previewLimit": "仅显示前 100 行。",
-  "results.openDir": "打开输出目录"
+  "results.openDir": "打开输出目录",
+  "nav.about": "关于",
+  "about.subtitle": "多维句法复杂度分析工具",
+  "about.description": "SynSpectra 是一款面向英语文本语料的多维句法复杂度分析工具：整合自定义依存距离指标（MDD/NDD/MHDD/AlphaDepLength）、LeoDDcalculator 公式的 Python 复刻（MDD_Leo/NDD_Leo）、QuanSyn 依存与配价指标，以及 NeoSCA/L2SCA 系列指标，为定量语言学、二语写作研究与心理健康文本分析提供可复现的批处理计算流程。",
+  "about.authors": "作者",
+  "about.authorsValue": "杜晓薇、覃俊鑫",
+  "about.school": "大连海事大学",
+  "about.project": "项目地址",
+  "about.license": "开源协议",
+  "about.licenseValue": "GPL-3.0（查看 LICENSE 文件）",
+  "about.methods": "底层计算方法",
+  "about.leoNoteTitle": "关于 LeoDD 指标的重要说明",
+  "about.leoNoteZh": "本项目中的 MDD_Leo / NDD_Leo 并非调用 LeoDDcalculator 的 R 包，而是我们参考其公式、基于 Python 与 UDPipe 模型独立重写的实现（逐句排除 root/punct 后计算 MDD，并以 abs(log(mdd / sqrt(句长 × root 距离))) 计算 NDD），以便与自定义与 QuanSyn 的 MDD/NDD 结果直接比对。",
+  "about.leoNoteEn": "The MDD_Leo / NDD_Leo metrics in this project are NOT produced by calling the LeoDDcalculator R package. They are our own Python reimplementation of its formulas on top of UDPipe (per-sentence MDD excluding root/punct, NDD = abs(log(mdd / sqrt(sentence_length × root_distance)))), so they can be compared directly with the custom and QuanSyn MDD/NDD values."
 }

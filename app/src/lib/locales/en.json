@@ -1,5 +1,5 @@
 {
-  "app.name": "Syntactic Metrics Tool",
+  "app.name": "SynSpectra",
   "nav.workspace": "Workspace",
   "nav.config": "Config",
   "nav.run": "Run",
@@ -116,5 +116,18 @@
   "results.empty": "No results yet",
   "results.preview": "Preview",
   "results.previewLimit": "Only the first 100 rows are shown.",
-  "results.openDir": "Open output directory"
+  "results.openDir": "Open output directory",
+  "nav.about": "About",
+  "about.subtitle": "Multi-dimensional syntactic complexity analysis toolkit",
+  "about.description": "SynSpectra is a multi-dimensional syntactic complexity analysis toolkit for English text corpora. It integrates custom dependency-distance metrics (MDD/NDD/MHDD/AlphaDepLength), a Python reimplementation of the LeoDDcalculator formulas (MDD_Leo/NDD_Leo), QuanSyn dependency & valency metrics, and the NeoSCA/L2SCA family — providing a reproducible batch pipeline for quantitative linguistics, L2 writing research and mental-health text analysis.",
+  "about.authors": "Authors",
+  "about.authorsValue": "Du Xiaowei & Qin Junxin",
+  "about.school": "Dalian Maritime University",
+  "about.project": "Repository",
+  "about.license": "License",
+  "about.licenseValue": "GPL-3.0 (see LICENSE)",
+  "about.methods": "Underlying methods",
+  "about.leoNoteTitle": "Important note about the Leo metrics",
+  "about.leoNoteZh": "placeholder",
+  "about.leoNoteEn": "The MDD_Leo / NDD_Leo metrics in this project are NOT produced by calling the LeoDDcalculator R package. They are our own Python reimplementation of its formulas on top of UDPipe (per-sentence MDD excluding root/punct, NDD = abs(log(mdd / sqrt(sentence_length × root_distance)))), so they can be compared directly with the custom and QuanSyn MDD/NDD values."
 }

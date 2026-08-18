@@ -36,7 +36,7 @@ export function installScript(dataDir: string): string {
       }
 
       // Open the Resources tab.
-      await waitFor(() => document.querySelectorAll(".tabbar .tab").length === 5, 15000);
+      await waitFor(() => document.querySelectorAll(".tabbar .tab").length === 6, 15000);
       const tabButtons = document.querySelectorAll(".tabbar .tab");
       tabButtons[3].dispatchEvent(new MouseEvent("click", { bubbles: true }));
       const onResources = await waitFor(

@@ -5,6 +5,7 @@
   import TabBar from "./components/TabBar.svelte";
   import Toasts from "./components/Toasts.svelte";
   import { activeTab } from "./lib/appState";
+  import About from "./pages/About.svelte";
   import Config from "./pages/Config.svelte";
   import Resources from "./pages/Resources.svelte";
   import Results from "./pages/Results.svelte";
@@ -18,6 +19,7 @@
     { id: "run", labelKey: "nav.run" },
     { id: "resources", labelKey: "nav.resources" },
     { id: "results", labelKey: "nav.results" },
+    { id: "about", labelKey: "nav.about" },
   ];
 
   function selectTab(id: string): void {
@@ -31,6 +33,7 @@
 
 <div class="app-shell">
   <header class="titlebar">
+    <span class="titlebar-brand" aria-label="SynSpectra">SynSpectra</span>
     <TabBar {tabs} active={$activeTab} onSelect={selectTab} />
   </header>
   <main class="page">
@@ -42,8 +45,10 @@
       <Run />
     {:else if $activeTab === "resources"}
       <Resources />
-    {:else}
+    {:else if $activeTab === "results"}
       <Results />
+    {:else}
+      <About />
     {/if}
   </main>
   <Toasts />

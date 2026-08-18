@@ -1,4 +1,4 @@
-# 多维句法复杂度分析整合包
+# SynSpectra · 多维句法复杂度分析整合包
 
 一个用于计算英语文本多维句法复杂度指标的综合 Python 工具包。该工具包整合了四种主要计算方法——基于公式自设计的计算流程（下称自定义）、QuanSyn、NeoSCA 和 LeoDDcalculator 公式的 Python 复刻（基于 UDPipe 模型），为定量句法分析提供了统一、可复现的计算流程。
 
@@ -29,7 +29,7 @@
 
 ## 概述
 
-代码仓库（私有）：https://github.com/duanjiangDJ/syntactic-metrics
+代码仓库（私有）：https://github.com/duanjiangDJ/synspectra
 
 本工具包为每篇英语文本计算超过 40 项句法复杂度指标，涵盖以下维度：
 
