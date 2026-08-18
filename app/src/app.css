@@ -144,6 +144,7 @@ button {
 /* DSHD advanced-shell style drag strip: the web app owns the top bar,
    the OS owns the caption buttons overlaid at the top-right. */
 .titlebar {
+  position: relative;
   -webkit-app-region: drag;
   display: flex;
   justify-content: center;
