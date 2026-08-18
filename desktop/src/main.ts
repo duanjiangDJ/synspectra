@@ -18,6 +18,10 @@ const isE2e = argv.has("--e2e");
 const isE2eInstall = argv.has("--e2e-install");
 const isHeadless = argv.has("--headless");
 const devUrl = process.env.SYN_METRICS_DEV_URL || null;
+const screenshotPath = (() => {
+  const index = process.argv.indexOf("--screenshot");
+  return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : null;
+})();
 
 let mainWindow: BrowserWindow | null = null;
 let carrier: CarrierServer | null = null;
@@ -144,7 +148,7 @@ function createWindow(ctx: DesktopContext, token: string): BrowserWindow {
     height: 760,
     minWidth: 900,
     minHeight: 620,
-    show: !isSmoke && !isE2e && !isE2eInstall,
+    show: !isSmoke && !isE2e && !isE2eInstall && !screenshotPath,
     autoHideMenuBar: true,
     backgroundColor: "#f6f7f9",
     title: "SynSpectra",
@@ -205,6 +209,35 @@ function runInstallE2e(win: BrowserWindow): void {
           app.exit(1);
         });
     }, 2500);
+  });
+}
+
+function runScreenshot(win: BrowserWindow, outputPath: string): void {
+  let done = false;
+  const timeout = setTimeout(() => {
+    if (done) return;
+    done = true;
+    console.log("SCREENSHOT_TIMEOUT");
+    app.exit(2);
+  }, 20000);
+  win.webContents.once("did-finish-load", () => {
+    setTimeout(() => {
+      void win.webContents
+        .capturePage()
+        .then((image) => {
+          done = true;
+          clearTimeout(timeout);
+          fs.writeFileSync(outputPath, image.toPNG());
+          console.log("SCREENSHOT_SAVED " + outputPath);
+          app.exit(0);
+        })
+        .catch((err: unknown) => {
+          done = true;
+          clearTimeout(timeout);
+          console.log("SCREENSHOT_FAILED " + String(err));
+          app.exit(1);
+        });
+    }, 3000);
   });
 }
 
@@ -322,6 +355,7 @@ async function runApp(): Promise<void> {
   if (isSmoke) runSmoke(win);
   if (isE2e) runE2e(win);
   if (isE2eInstall) runInstallE2e(win);
+  if (screenshotPath) runScreenshot(win, screenshotPath);
 }
 
 const gotLock = app.requestSingleInstanceLock();
