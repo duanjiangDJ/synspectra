@@ -133,7 +133,10 @@ function createWindow(ctx: DesktopContext, token: string): BrowserWindow {
     process.platform === "darwin"
       ? {
           titleBarStyle: "hiddenInset",
-          trafficLightPosition: { x: 14, y: 12 },
+          // Traffic lights are moved to the top-right so the brand can stay
+          // flush against the left edge on every platform. The resize
+          // handler below keeps them right-aligned as the window changes.
+          trafficLightPosition: { x: 1030, y: 12 },
         }
       : {
           titleBarStyle: "hidden",
@@ -161,6 +164,17 @@ function createWindow(ctx: DesktopContext, token: string): BrowserWindow {
     },
   });
   mainWindow = win;
+
+  if (process.platform === "darwin") {
+    // Keep the macOS traffic lights pinned to the top-right corner.
+    const placeTrafficLights = (): void => {
+      const [width] = win.getContentSize();
+      win.setWindowButtonPosition({ x: width - 64, y: 12 });
+    };
+    placeTrafficLights();
+    win.on("resize", placeTrafficLights);
+  }
+
   const origin = devUrl ?? "http://127.0.0.1:" + String(carrier?.port ?? 0);
   guardNavigation(win, origin);
   if (devUrl) {

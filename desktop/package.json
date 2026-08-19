@@ -1,7 +1,7 @@
 {
   "name": "synspectra-desktop",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Electron carrier shell for the syntactic complexity metrics toolkit",
   "author": {
     "name": "Syntactic Metrics Team",
