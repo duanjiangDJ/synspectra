@@ -222,6 +222,21 @@ function runScreenshot(win: BrowserWindow, outputPath: string): void {
   }, 20000);
   win.webContents.once("did-finish-load", () => {
     setTimeout(() => {
+      const infoScript = [
+        "JSON.stringify({",
+        "  lang: document.documentElement.lang,",
+        "  heading: (document.querySelector('.page-section h2') || {}).textContent || null,",
+        "  brand: (() => {",
+        "    const el = document.querySelector('.titlebar-brand');",
+        "    if (!el) return null;",
+        "    const r = el.getBoundingClientRect();",
+        "    return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };",
+        "  })(),",
+        "})",
+      ].join("\n");
+      void win.webContents.executeJavaScript(infoScript, true).then((info: unknown) => {
+        console.log("SCREENSHOT_INFO " + JSON.stringify(info));
+      }).catch(() => {});
       void win.webContents
         .capturePage()
         .then((image) => {

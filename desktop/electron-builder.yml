@@ -4,6 +4,7 @@ copyright: Copyright © SynSpectra Authors (Dalian Maritime University)
 directories:
   output: release
   buildResources: build
+afterSign: scripts/afterSign.cjs
 files:
   - dist/**/*
   - package.json

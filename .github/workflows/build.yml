@@ -110,6 +110,13 @@ jobs:
           UV_BIN="$UV_X64" node scripts/prepack.mjs
           npx electron-builder --mac --x64 --publish never
 
+      - name: Verify macOS code signature
+        if: matrix.os == 'macos-latest'
+        working-directory: desktop
+        run: |
+          codesign --verify --deep --strict "release/mac-arm64/SynSpectra.app" && echo "arm64 signature OK"
+          codesign --verify --deep --strict "release/mac/SynSpectra.app" && echo "x64 signature OK"
+
       - name: Package desktop app (Windows/Linux)
         if: matrix.os != 'macos-latest'
         working-directory: desktop
