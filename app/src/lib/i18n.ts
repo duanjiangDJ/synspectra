@@ -13,12 +13,11 @@ const dictionaries: Record<Locale, Record<string, string>> = {
 const STORAGE_KEY = "syntactic-metrics-locale";
 
 function detectInitialLocale(): Locale {
+  // Only zh-CN and en are supported. The user's manual choice persists in
+  // localStorage; otherwise the default is English regardless of the OS.
   if (typeof localStorage !== "undefined") {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved === "zh-CN" || saved === "en") return saved;
-  }
-  if (typeof navigator !== "undefined") {
-    return navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
   }
   return "en";
 }
