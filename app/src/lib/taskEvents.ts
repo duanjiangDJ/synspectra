@@ -5,12 +5,15 @@ import {
   bulkInstalling,
   pendingInstallAll,
   resourceDir,
+  categories,
   corpusImporting,
   corpusMutation,
   corpusScan,
   corpusScanning,
   currentChildId,
+  defaultLanguage,
   forceRerun,
+  languageForCategory,
   lastTaskStatus,
   methods,
   progress,
@@ -31,9 +34,16 @@ import {
   onBackendEvent,
   onBackendRaw,
   pathExists,
+  scanSourceTree,
   spawnBackend,
   type SpawnRequest,
 } from "./backend";
+import {
+  languageOption,
+  languagesInUse,
+  leoModelPath,
+  stanzaModelDir,
+} from "./languages";
 import {
   clearBulkState,
   installAllResources,
@@ -295,15 +305,39 @@ export async function startRun(): Promise<void> {
     return;
   }
 
+  // Categories decide which language models are needed; refresh the list when
+  // the Workspace page has not scanned the source directory yet.
+  let categoryList = get(categories);
+  if (categoryList.length === 0) {
+    try {
+      categoryList = await scanSourceTree(source);
+      categories.set(categoryList);
+    } catch {
+      categoryList = [];
+    }
+  }
+  const defaultLang = get(defaultLanguage);
+  const languages = languagesInUse(
+    categoryList,
+    (name) => languageForCategory(source, name),
+    defaultLang,
+  );
+
   const required: Array<[string, string]> = [];
+  const stanzaRoot = paths.env?.STANZA_RESOURCES_DIR ?? "";
+  const modelsDir = paths.data_dir + "/models";
   if (enabled.includes("custom") || enabled.includes("quansyn")) {
-    required.push(["Stanza model", paths.data_dir + "/stanza_resources"]);
+    for (const language of languages) {
+      required.push([
+        "Stanza model (" + language + ")",
+        stanzaRoot ? stanzaModelDir(stanzaRoot, language) : "",
+      ]);
+    }
   }
   if (enabled.includes("leo")) {
-    required.push([
-      "UDPipe model",
-      paths.data_dir + "/models/english-ewt-ud-2.4-190531.udpipe",
-    ]);
+    for (const language of languages) {
+      required.push(["UDPipe model (" + language + ")", leoModelPath(modelsDir, language)]);
+    }
   }
   if (enabled.includes("neosca")) {
     required.push(
@@ -313,7 +347,7 @@ export async function startRun(): Promise<void> {
     );
   }
   for (const [label, resourcePath] of required) {
-    if (!(await pathExists(resourcePath))) {
+    if (!resourcePath || !(await pathExists(resourcePath))) {
       appendRaw(
         "[error] Missing resource: " +
           label +
@@ -333,11 +367,27 @@ export async function startRun(): Promise<void> {
     result,
     "--methods",
     enabled.join(","),
+    "--language",
+    defaultLang,
     "--log-format",
     "jsonl",
   ];
+  const overrides = categoryList
+    .map((category) => [category.name, languageForCategory(source, category.name)] as const)
+    .filter(([, language]) => language !== defaultLang);
+  if (overrides.length > 0) {
+    args.push(
+      "--category-languages",
+      overrides.map(([name, language]) => name + "=" + language).join(","),
+    );
+  }
   if (enabled.includes("leo")) {
-    args.push("--leo-model-folder", paths.data_dir + "/models");
+    args.push("--leo-model-folder", modelsDir);
+  }
+  if (enabled.includes("neosca") && languages.some((language) => !languageOption(language).neosca)) {
+    appendRaw(
+      "[info] NeoSCA only supports English; it will be skipped for categories in other languages.",
+    );
   }
   if (get(forceRerun)) args.push("--no-resume");
 

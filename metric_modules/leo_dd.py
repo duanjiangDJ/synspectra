@@ -129,8 +129,9 @@ def calculate_folder_mdd_ndd(
     language_model_folder: str = "C:/",
     results_folder: str | None = None,
     progress_cb=None,
+    model_file: str = "english-ewt-ud-2.4-190531.udpipe",
 ) -> tuple[dict[str, dict[str, float]], str]:
-    model_path = os.path.join(language_model_folder, "english-ewt-ud-2.4-190531.udpipe")
+    model_path = os.path.join(language_model_folder, model_file)
     pipeline = load_udpipe_pipeline(model_path)
     texts_folder_stripped = texts_folder.rstrip("/\\")
     results_folder = results_folder or f"{texts_folder_stripped}_results_dd"
@@ -160,13 +161,17 @@ def calculate_folder_mdd_ndd(
         mdd, ndd = calculate_mdd_ndd_from_dependencies(dependencies)
         file_id = os.path.splitext(filename)[0]
         metrics[filename] = {"MDD_Leo": mdd, "NDD_Leo": ndd}
-        summary_rows.append({"file_id": file_id, "mdd": f"{mdd:.4f}", "ndd": f"{ndd:.4f}"})
+        # The model is recorded so a resumed run can tell whether the cached
+        # numbers came from the language that is configured now.
+        summary_rows.append(
+            {"file_id": file_id, "mdd": f"{mdd:.4f}", "ndd": f"{ndd:.4f}", "model": model_file}
+        )
         if progress_cb is not None:
             progress_cb(filename, index, total_files)
 
     summary_path = os.path.join(results_folder, "0mdd_ndd_results.csv")
     with open(summary_path, "w", newline="", encoding="utf-8") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=["file_id", "mdd", "ndd"])
+        writer = csv.DictWriter(csvfile, fieldnames=["file_id", "mdd", "ndd", "model"])
         writer.writeheader()
         writer.writerows(summary_rows)
 

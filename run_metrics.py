@@ -5,7 +5,7 @@ import os
 import sys
 import uuid
 
-from metric_modules.config import VALID_METHODS, apply_preset, load_config, set_methods
+from metric_modules.config import VALID_METHODS, apply_preset, load_config, resolve_language_profile, set_methods
 from metric_modules import event_logger
 from metric_modules.pipeline import run_pipeline
 
@@ -36,6 +36,14 @@ def main() -> None:
     parser.add_argument("--source-dir", help="Override source_dir from the config file.")
     parser.add_argument("--result-dir", help="Override result_dir from the config file.")
     parser.add_argument("--leo-model-folder", help="Override leo.language_model_folder from the config file.")
+    parser.add_argument(
+        "--language",
+        help="Default analysis language for every category (e.g. en, zh).",
+    )
+    parser.add_argument(
+        "--category-languages",
+        help='Per-category language overrides, e.g. "原文=zh,摘要=zh".',
+    )
     parser.add_argument("--output-suffix", help="Override output_suffix from the config file.")
     parser.add_argument("--no-resume", action="store_true", help="Ignore existing progress CSV files and rewrite outputs.")
     parser.add_argument(
@@ -71,6 +79,22 @@ def main() -> None:
         config["result_dir"] = args.result_dir
     if args.leo_model_folder:
         config.setdefault("leo", {})["language_model_folder"] = args.leo_model_folder
+    if args.language:
+        config["language"] = args.language
+    if args.category_languages:
+        overrides: dict[str, str] = {}
+        for entry in args.category_languages.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if "=" not in entry:
+                raise SystemExit(f"Invalid --category-languages entry {entry!r}; expected name=language.")
+            name, language = entry.split("=", 1)
+            overrides[name.strip()] = language.strip()
+        config["category_languages"] = {**(config.get("category_languages") or {}), **overrides}
+    # Fail fast (with a readable message) on unknown language names.
+    for language in [config.get("language", "en"), *(config.get("category_languages") or {}).values()]:
+        resolve_language_profile(config, language)
     if args.output_suffix is not None:
         config["output_suffix"] = args.output_suffix
     if args.no_resume:

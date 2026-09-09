@@ -11,6 +11,34 @@ from .fields import ALL_OUTPUT_FIELDS, NEOSCA_OUTPUT_FIELDS, OTHER_OUTPUT_FIELDS
 VALID_METHODS = ("custom", "leo", "quansyn", "neosca")
 
 
+# Per-language model and parser settings. Keys are the values accepted by
+# category_languages / --category-languages; "en" must keep the historical
+# settings so existing English results stay comparable.
+LANGUAGE_PROFILES: dict[str, dict[str, Any]] = {
+    "en": {
+        "stanza": {
+            "language": "en",
+            "processors": "tokenize,pos,lemma,depparse",
+            "package": "default",
+        },
+        "leo": {"model_file": "english-ewt-ud-2.4-190531.udpipe"},
+        "disabled_methods": [],
+    },
+    "zh": {
+        # Chinese depparse requires the lemma processor, so the processor list
+        # matches English; only the model packages differ.
+        "stanza": {
+            "language": "zh-hans",
+            "processors": "tokenize,pos,lemma,depparse",
+            "package": "default_fast",
+        },
+        "leo": {"model_file": "chinese-gsd-ud-2.4-190531.udpipe"},
+        # NeoSCA/L2SCA measures are defined on English phrase structure.
+        "disabled_methods": ["neosca"],
+    },
+}
+
+
 DEFAULT_CONFIG: dict[str, Any] = {
     "source_dir": "source",
     "result_dir": "result",
@@ -24,6 +52,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "neosca": False,
     },
     "output_fields": OTHER_OUTPUT_FIELDS,
+    "language": "en",
+    "category_languages": {},
+    "language_profiles": LANGUAGE_PROFILES,
     "stanza": {
         "processors": "tokenize,pos,lemma,depparse",
         "use_gpu": False,
@@ -35,9 +66,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "language_model_folder": "C:/",
     },
     "neosca": {
-        "timeout": 300,
-        "batch_size": 10,
+        "timeout": 1800,
+        "batch_size": 2,
         "max_length": 300,
+        "words_per_second": 15,
     },
 }
 
@@ -60,6 +92,21 @@ def load_config(config_path: str | None = "metrics_config.json") -> dict[str, An
     with open(config_path, "r", encoding="utf-8") as f:
         user_config = json.load(f)
     return deep_merge(config, user_config)
+
+
+def resolve_language_profile(config: dict[str, Any], language: str) -> dict[str, Any]:
+    """Returns the profile for a language, failing loudly on unknown names."""
+    profiles = config.get("language_profiles") or LANGUAGE_PROFILES
+    profile = profiles.get(language)
+    if profile is None:
+        known = ", ".join(sorted(profiles))
+        raise ValueError(f"Unknown language '{language}' (known: {known})")
+    return profile
+
+
+def category_language(config: dict[str, Any], category_name: str) -> str:
+    overrides = config.get("category_languages") or {}
+    return overrides.get(category_name) or config.get("language", "en")
 
 
 def set_methods(config: dict[str, Any], methods: set[str], output_fields: list[str] | None = None) -> None:

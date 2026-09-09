@@ -39,6 +39,8 @@ bridge。浏览器调试时也可通过查询参数 `?ws=ws://127.0.0.1:<port>/c
 ## 2. WebSocket carrier
 
 - 端点：`/carrier`，握手必须携带 `?token=<boot.token>`，否则拒绝升级。
+- 端口优先使用固定的 `8731`（这样 renderer 的 origin 稳定，localStorage 里的界面设置
+  才能跨重启保留）；端口被占用时回退到随机端口，此时设置会随 origin 变化而重置。
 - 客户端 → 服务器（请求）：
 
 ```json

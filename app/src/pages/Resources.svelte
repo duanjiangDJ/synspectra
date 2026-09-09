@@ -56,6 +56,13 @@
       ],
     },
     {
+      groupKey: "resources.group.modelsZh",
+      items: [
+        { id: "udpipe_model_zh", key: "resources.item.udpipeZh", installable: true },
+        { id: "stanza_model_zh", key: "resources.item.stanzaZh", installable: true },
+      ],
+    },
+    {
       groupKey: "resources.group.neosca",
       items: [
         { id: "jre", key: "resources.item.jre", installable: true },

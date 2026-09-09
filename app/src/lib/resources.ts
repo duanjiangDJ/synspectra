@@ -16,6 +16,7 @@ import {
   spawnBackend,
   type SpawnRequest,
 } from "./backend";
+import { leoModelPath, stanzaModelDir } from "./languages";
 import { addToast } from "./ui";
 
 function buildRequest(script: string, args: string[]): SpawnRequest {
@@ -85,7 +86,15 @@ export async function installAllResources(): Promise<void> {
   // Everything not installed yet shows "queued" so the user sees the full
   // plan; items become live once their own events arrive.
   bulkInstalling.set(true);
-  for (const id of ["udpipe_model", "stanza_model", "jre", "stanford_parser", "stanford_tregex"]) {
+  for (const id of [
+    "udpipe_model",
+    "udpipe_model_zh",
+    "stanza_model",
+    "stanza_model_zh",
+    "jre",
+    "stanford_parser",
+    "stanford_tregex",
+  ]) {
     if (!ready[id]) markStatus(id, "queued");
   }
 
@@ -188,10 +197,16 @@ export async function refreshResourceReadiness(): Promise<void> {
     resourceReady.set({});
     return;
   }
+  const stanzaRoot = paths.env?.STANZA_RESOURCES_DIR ?? "";
+  const modelsDir = paths.data_dir + "/models";
   const targets: Record<string, string | null> = {
     python: paths.venv_python,
-    stanza_model: paths.env?.STANZA_RESOURCES_DIR ?? null,
-    udpipe_model: paths.data_dir + "/models/english-ewt-ud-2.4-190531.udpipe",
+    // Each language lives in its own sub-directory, so a missing English model
+    // cannot be masked by an installed Chinese one.
+    stanza_model: stanzaRoot ? stanzaModelDir(stanzaRoot, "en") : null,
+    stanza_model_zh: stanzaRoot ? stanzaModelDir(stanzaRoot, "zh") : null,
+    udpipe_model: leoModelPath(modelsDir, "en"),
+    udpipe_model_zh: leoModelPath(modelsDir, "zh"),
     jre: paths.data_dir + "/java",
     stanford_parser: paths.data_dir + "/stanford/parser",
     stanford_tregex: paths.data_dir + "/stanford/tregex",
@@ -211,7 +226,23 @@ export const METHOD_RESOURCE_DEPS: Record<string, string[]> = {
   neosca: ["python", "jre", "stanford_parser", "stanford_tregex"],
 };
 
-export function isMethodReady(method: string, ready: Record<string, boolean>): boolean {
-  const deps = METHOD_RESOURCE_DEPS[method] ?? [];
-  return deps.every((id) => ready[id] === true);
+/** Maps the language-neutral model ids to the per-language resource ids. */
+const LANGUAGE_MODEL_RESOURCES: Record<string, Record<string, string>> = {
+  en: { stanza_model: "stanza_model", udpipe_model: "udpipe_model" },
+  zh: { stanza_model: "stanza_model_zh", udpipe_model: "udpipe_model_zh" },
+};
+
+export function methodResourceDeps(method: string, language = "en"): string[] {
+  const mapping = LANGUAGE_MODEL_RESOURCES[language] ?? LANGUAGE_MODEL_RESOURCES.en;
+  return (METHOD_RESOURCE_DEPS[method] ?? []).map((id) => mapping[id] ?? id);
+}
+
+export function isMethodReady(
+  method: string,
+  ready: Record<string, boolean>,
+  languages: string[] = ["en"],
+): boolean {
+  return languages.every((language) =>
+    methodResourceDeps(method, language).every((id) => ready[id] === true),
+  );
 }

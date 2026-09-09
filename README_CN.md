@@ -299,11 +299,17 @@ pip install -r requirements.txt
 | 配置键 | 默认 | 说明 |
 | --- | --- | --- |
 | `stanza.workers` | 4 | Stanza 解析的并行进程数（每个 worker 约占用 2~3 GB 内存；设为 1 即串行） |
-| `neosca.batch_size` | 10 | 每次 JVM 调用批量处理的文件数（越大越省 JVM 启动开销） |
-| `neosca.timeout` | 300 | 单批次的超时秒数（原按单文件计算） |
+| `neosca.batch_size` | 2 | 每次 JVM 调用批量处理的文件数（过大容易因超时或内存不足导致整批失败） |
+| `neosca.timeout` | 1800 | 单批次超时的下限秒数 |
+| `neosca.words_per_second` | 15 | 超时按批次词数自动放大：`max(timeout, 词数/15)`，保证大文件能跑完而不是被杀掉 |
 | `neosca.max_length` | 300 | 单句最长词数，超长句跳过解析，防止单个病态文件拖死整批 |
 
 内存不足时调低 `stanza.workers`；机器核数更多时可调高（建议不超过核心数的一半）。指标输出与串行模式完全一致（回归验证 `mismatches []`）。
+
+**大文件支持**：单个 500 KB 级英文文件（约 8.6 万词）已实测跑通——`custom + leo + quansyn` 约 8 分钟，NeoSCA 约 29 分钟（16 核机器；单个文件只能串行解析，无法用 `stanza.workers` 加速）。中文 440 KB（约 15 万字）约 2 分钟。注意：
+
+- NeoSCA 的超时会按词数自动放大（8.6 万词约 96 分钟预算），实测 29 分钟即可完成，内存未触及 JVM 的 3 GB 上限；机器更慢或文件更大时仍可能内存不足，建议对超大文件用 `--methods custom,leo,quansyn` 关闭 NeoSCA。
+- `neosca.max_length` 只影响超长句是否解析，不影响其它方法。
 
 使用统一入口运行：
 
@@ -325,6 +331,38 @@ python run_metrics.py --methods custom,leo,quansyn --no-resume
 - 对每个 `.txt` 文件，清洗文本并计算所有指标。
 - 逐步将结果写入 `result/<类别名称>.csv`。
 - 支持断点续传：如果运行中断，重新运行将自动跳过已处理的文件；如需强制重算可使用 `--no-resume`。
+
+### 5. 语言配置（中文 / 英文混合语料）
+
+不同语言需要不同的解析模型。默认语言为英文（`language: "en"`），中文通过语言档案 `zh` 启用：
+
+```json
+{
+  "language": "en",
+  "category_languages": { "原文": "zh" }
+}
+```
+
+也可以直接用命令行指定，无需修改配置文件：
+
+```bash
+python run_metrics.py --language en --category-languages "原文=zh"
+```
+
+| 语言档案 | Stanza 模型 | UDPipe 模型 | NeoSCA |
+| --- | --- | --- | --- |
+| `en` | `stanza_resources/en`（默认包） | `english-ewt-ud-2.4-190531.udpipe` | 可用 |
+| `zh` | `stanza_resources/zh-hans`（`default_fast` 包，约 420 MB） | `chinese-gsd-ud-2.4-190531.udpipe`（14 MB） | 不适用 |
+
+说明：
+
+- **中文不计算 NeoSCA**：W/S/VP/C/T 等指标定义在英文短语结构语法上（T-unit、小句、动词短语、复杂名词），NeoSCA 本身也不支持中文。中文类别的 CSV 会自动只写出依存类指标列（`filename` + 自定义 4 项 + LeoDD 2 项 + QuanSyn 11 项，共 18 列），不会写出空的 NeoSCA 列。
+- **中文必须包含 `lemma` 处理器**：Stanza 的中文 `depparse` 依赖 `lemma`，因此中英文的 `processors` 相同，只有模型包不同。
+- 未知语言名会直接报错并列出可用档案，不会静默回退到英文。
+- UDPipe 模型文件名由语言档案决定；`leo.language_model_folder` 仍指向模型目录，可用 `leo.model_file` 覆盖文件名。
+- 桌面端在「工作区」页为每个类别选择语言，在「资源」页安装中文模型；「配置」页可设置默认语言。
+
+> 注意：中英文分词单位不同（中文按词、英文按 word），MDD 等依存距离指标不宜直接跨语言比较，报告中请注明所用模型与分词单位。
 
 ---
 
@@ -367,6 +405,8 @@ result/
 | `T/S`                                            | 每句子 T 单位数                                  | NeoSCA     |
 | `CT/T`、`CP/T`、`CP/C`、`CN/T`、`CN/C`           | 复杂 T 单位 / 并列短语 / 复杂名词比例            | NeoSCA     |
 | `W`、`S`、`VP`、`C`、`T`、`DC`、`CT`、`CP`、`CN` | 结构频次统计                                     | NeoSCA     |
+
+> 不同语言的列集合可能不同：英文类别（启用 NeoSCA 时）为 41 列；中文类别固定为 18 列（不含 NeoSCA），详见[语言配置](#5-语言配置中文--英文混合语料)。
 
 ---
 

@@ -307,11 +307,17 @@ Two accelerations are enabled by default and tunable in `metrics_config.json`:
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `stanza.workers` | 4 | Parallel processes for Stanza parsing (each worker uses ~2–3 GB RAM; 1 = serial) |
-| `neosca.batch_size` | 10 | Files processed per single JVM invocation (larger saves JVM startups) |
-| `neosca.timeout` | 300 | Timeout in seconds per batch (previously per file) |
+| `neosca.batch_size` | 2 | Files processed per single JVM invocation (too large risks a whole batch timing out or running out of memory) |
+| `neosca.timeout` | 1800 | Lower bound, in seconds, for one batch |
+| `neosca.words_per_second` | 15 | Timeout scales with the batch word count: `max(timeout, words/15)`, so large files finish instead of being killed |
 | `neosca.max_length` | 300 | Longest sentence length; longer sentences are skipped to prevent a single pathological file from stalling a batch |
 
 Lower `stanza.workers` when memory is tight; raise it (up to roughly half the core count) on larger machines. Metric output is identical to serial mode (regression-verified `mismatches []`).
+
+**Large files**: a single 500 KB English file (~86k words) completes end to end — `custom + leo + quansyn` takes about 8 minutes and NeoSCA about 29 minutes on a 16-core machine (one file cannot use `stanza.workers`, so the Stanza stage is serial). A 440 KB Chinese file (~150k characters) takes about 2 minutes. Note:
+
+- The NeoSCA timeout scales with the word count (~96 minutes of budget for 86k words; the measured run took 29 minutes and stayed well below the 3 GB JVM heap). Very large files or slower machines can still hit that heap limit, so prefer `--methods custom,leo,quansyn` for them.
+- `neosca.max_length` only decides whether over-long sentences are parsed; it does not affect the other methods.
 
 Run the configurable pipeline with:
 
@@ -333,6 +339,38 @@ The script will:
 - For each `.txt` file, clean the text and compute all metrics.
 - Write results progressively to `result/<category_name>.csv`.
 - Support checkpoint/resume: if interrupted, rerunning will automatically skip already-processed files. Use `--no-resume` to force recomputation.
+
+### 5. Language configuration (mixed Chinese / English corpora)
+
+Each language needs its own parsing models. English is the default (`language: "en"`); Chinese is enabled through the `zh` profile:
+
+```json
+{
+  "language": "en",
+  "category_languages": { "原文": "zh" }
+}
+```
+
+The same can be set on the command line without editing the config file:
+
+```bash
+python run_metrics.py --language en --category-languages "原文=zh"
+```
+
+| Profile | Stanza models | UDPipe model | NeoSCA |
+| --- | --- | --- | --- |
+| `en` | `stanza_resources/en` (default package) | `english-ewt-ud-2.4-190531.udpipe` | available |
+| `zh` | `stanza_resources/zh-hans` (`default_fast` package, ~420 MB) | `chinese-gsd-ud-2.4-190531.udpipe` (14 MB) | not applicable |
+
+Notes:
+
+- **No NeoSCA for Chinese**: W/S/VP/C/T are defined on English phrase structure (T-units, clauses, verb phrases, complex nominals), and NeoSCA itself has no Chinese support. Chinese categories therefore get only the dependency-based columns (`filename` + 4 custom + 2 LeoDD + 11 QuanSyn = 18 columns); no empty NeoSCA columns are written.
+- **Chinese still needs the `lemma` processor**: Stanza's Chinese `depparse` requires `lemma`, so the processor list matches English and only the model packages differ.
+- An unknown language name fails loudly with the list of known profiles instead of silently falling back to English.
+- The UDPipe model file name comes from the language profile; `leo.language_model_folder` still points at the model directory and `leo.model_file` can override the file name.
+- The desktop app exposes per-category language selection on the Workspace page, Chinese model installation on the Resources page, and a default language on the Config page.
+
+> Note: Chinese and English tokenize differently (Chinese words vs English words), so dependency-distance metrics such as MDD should not be compared across languages directly. Report the models and tokenization units you used.
 
 ---
 

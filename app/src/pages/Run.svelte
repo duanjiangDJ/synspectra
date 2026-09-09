@@ -4,6 +4,10 @@
   import { bootRevision, bridgeKind } from "../bridge/bridge";
   import {
     backendPaths,
+    categories,
+    categoryLanguageKey,
+    categoryLanguages,
+    defaultLanguage,
     lastTaskStatus,
     methods,
     navigate,
@@ -17,16 +21,26 @@
   import Console from "../components/Console.svelte";
   import { stageLabel } from "../lib/console";
   import { t } from "../lib/i18n";
+  import { languagesInUse } from "../lib/languages";
   import { isMethodReady, refreshResourceReadiness } from "../lib/resources";
   import { startListening, startRun, stopRun } from "../lib/taskEvents";
 
   let readinessChecked = $state(false);
 
+  const languages = $derived(
+    languagesInUse(
+      $categories,
+      (name) =>
+        $categoryLanguages[categoryLanguageKey($sourceDir, name)] ??
+        $defaultLanguage,
+      $defaultLanguage,
+    ),
+  );
   const missingMethods = $derived(
     Object.entries($methods)
       .filter(([, enabled]) => enabled)
       .map(([id]) => id)
-      .filter((id) => !isMethodReady(id, $resourceReady)),
+      .filter((id) => !isMethodReady(id, $resourceReady, languages)),
   );
   const blockedByResources = $derived(
     $bridgeKind === "rpc" && readinessChecked && missingMethods.length > 0,
@@ -99,6 +113,7 @@
     <p class="muted small">
       {#if blockedByResources}
         {$t("run.missingResources")}
+        <code>{missingMethods.join(", ")}</code>
         <button type="button" class="link-button" onclick={() => navigate("resources")}>
           {$t("config.goResources")}
         </button>

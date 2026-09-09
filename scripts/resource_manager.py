@@ -420,10 +420,22 @@ def _install_stanza_model(resource_id: str, data_dir: str, spec: dict[str, Any])
         raise RuntimeError(
             "stanza is not installed; install the Python dependencies first."
         )
-    if spec.get("resources_url"):
-        os.environ["STANZA_RESOURCES_URL"] = str(spec["resources_url"])
-    if spec.get("model_url"):
-        os.environ["STANZA_MODEL_URL"] = str(spec["model_url"])
+    language = str(spec.get("language", "en"))
+    # stanza resolves its URL defaults from the environment at import time, so
+    # the manifest URLs have to be passed explicitly. model_url must keep the
+    # {lang}/{resources_version}/{filename} placeholders.
+    download_kwargs: dict[str, Any] = {}
+    resources_url = spec.get("resources_url")
+    model_url = spec.get("model_url")
+    if resources_url:
+        download_kwargs["resources_url"] = str(resources_url)
+    if model_url and "{filename}" in str(model_url):
+        download_kwargs["model_url"] = str(model_url)
+    elif model_url:
+        event_logger.log(
+            "warning",
+            f"Ignoring model_url for {resource_id}: missing {{filename}} placeholder.",
+        )
     state = load_state(data_dir)
     target = os.path.join(data_dir, spec.get("target", "stanza_resources"))
     state[resource_id] = {"status": "downloading", "version": spec.get("version", "latest")}
@@ -431,10 +443,12 @@ def _install_stanza_model(resource_id: str, data_dir: str, spec: dict[str, Any])
     event_logger.resource(resource_id, "downloading", detail="Downloading Stanza model")
     try:
         stanza.download(
-            "en",
+            language,
             processors=spec.get("processors", "tokenize,pos,lemma,depparse"),
+            package=spec.get("package", "default"),
             model_dir=target,
             verbose=False,
+            **download_kwargs,
         )
     except Exception as exc:
         mark_failure(

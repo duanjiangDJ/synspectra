@@ -28,8 +28,9 @@
     "language_model_folder": "C:/"
   },
   "neosca": {
-    "timeout": 300,
-    "batch_size": 10,
-    "max_length": 300
+    "timeout": 1800,
+    "batch_size": 2,
+    "max_length": 300,
+    "words_per_second": 15
   }
 }

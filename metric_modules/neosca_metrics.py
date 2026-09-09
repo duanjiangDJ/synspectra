@@ -34,14 +34,20 @@ class NeoSCABatcher:
 
     def __init__(
         self,
-        timeout: int = 300,
-        batch_size: int = 10,
+        timeout: int = 1800,
+        batch_size: int = 2,
         max_length: int | None = None,
+        words_per_second: int = 15,
     ) -> None:
         self.timeout = timeout
         self.batch_size = max(1, batch_size)
         self.max_length = max_length
+        # `timeout` is the floor for a batch; large batches get a budget
+        # proportional to their word count so a single 500 KB file (tens of
+        # thousands of words) can still finish instead of being killed.
+        self.words_per_second = max(1, int(words_per_second))
         self._pending: list[tuple[str, str]] = []
+        self._pending_words = 0
         self._results: dict[str, dict[str, float | str]] = {}
 
     def submit(self, filename: str, text_content: str) -> bool:
@@ -50,6 +56,7 @@ class NeoSCABatcher:
             self._results[filename] = {}
             return False
         self._pending.append((filename, text_content))
+        self._pending_words += len(text_content.split())
         if len(self._pending) >= self.batch_size:
             self._run()
             return True
@@ -65,7 +72,10 @@ class NeoSCABatcher:
         if not self._pending:
             return
         batch = self._pending
+        batch_words = self._pending_words
         self._pending = []
+        self._pending_words = 0
+        timeout = max(self.timeout, batch_words // self.words_per_second)
 
         tmp_dir = tempfile.mkdtemp()
         csv_path = os.path.join(tmp_dir, "result.csv")
@@ -85,7 +95,7 @@ class NeoSCABatcher:
                 args,
                 capture_output=True,
                 text=True,
-                timeout=self.timeout,
+                timeout=timeout,
                 check=True,
             )
 
@@ -114,7 +124,7 @@ class NeoSCABatcher:
             event_logger.error(
                 "NEOSCA_TIMEOUT",
                 "NeoSCA batch timed out.",
-                f"Timeout after {self.timeout} seconds for {len(batch)} files.",
+                f"Timeout after {timeout} seconds for {len(batch)} files ({batch_words} words).",
                 "Increase neosca.timeout or reduce neosca.batch_size.",
             )
             for filename, _ in batch:

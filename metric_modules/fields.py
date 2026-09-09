@@ -30,3 +30,25 @@ def fields_for_methods(methods: dict[str, bool], include_all_quansyn: bool = Fal
     if methods.get("neosca", False):
         fields.extend(NEOSCA_FIELDS)
     return fields
+
+
+_METHOD_FIELD_GROUPS: dict[str, list[str]] = {
+    "custom": CUSTOM_FIELDS,
+    "leo": LEO_FIELDS,
+    "quansyn": QUANSYN_ALL_FIELDS,
+    "neosca": NEOSCA_FIELDS,
+}
+
+
+def filter_fields_for_methods(fields: list[str], methods: dict[str, bool]) -> list[str]:
+    """Drops columns that belong only to methods disabled for a category.
+
+    A category can run with fewer methods than the global configuration (for
+    example NeoSCA has no Chinese model), and the CSV header must then match
+    what was actually computed.
+    """
+    disabled: set[str] = set()
+    for method, group in _METHOD_FIELD_GROUPS.items():
+        if not methods.get(method, False):
+            disabled.update(group)
+    return [field for field in fields if field == "filename" or field not in disabled]

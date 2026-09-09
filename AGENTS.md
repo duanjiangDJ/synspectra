@@ -60,6 +60,7 @@ Set-Location 'e:\DMU\research\textAnalyse\index'
   - `README_CN.md` 与 `README.md` 中的使用说明、输出列和依赖说明。
 - 可复现实验配置中，`output_fields` 应与启用的方法保持一致。关闭某个方法时，不应保留该方法独有输出列，除非是为了兼容历史结果文件。
 - LeoDD/UDPipe 模型目录由 `metrics_config.json` 中的 `leo.language_model_folder` 控制，默认模型路径为 `C:/english-ewt-ud-2.4-190531.udpipe`。不要在业务代码中新增未配置的绝对路径。
+- 语言差异统一走 `metric_modules/config.py` 的 `language_profiles`：每个语言档案声明 Stanza 语言/模型包、UDPipe 模型文件名和该语言不支持的方法（`zh` 禁用 `neosca`）。类别语言通过 `category_languages` 或 `--category-languages` 指定，默认 `en`；指标公式、CSV 列定义和字段顺序不要因语言而改。新增语言时同步更新前端 `app/src/lib/languages.ts` 与 `resources/resource_manifest.json`。
 
 ## 编码规范
 
@@ -122,6 +123,17 @@ Set-Location 'e:\DMU\research\textAnalyse\index'
 ```
 
 同时检查编辑器/Pylance 诊断。若有新增诊断，应优先修复与本次改动相关的问题。
+
+### 涉及语言档案的改动
+
+除英文回归外，还需跑一次中文冒烟：中文模型就绪时（`stanza_resources/zh-hans` 与 `models/chinese-gsd-ud-2.4-190531.udpipe`），对 3~4 个中文文件运行
+
+```powershell
+Set-Location 'e:\DMU\research\textAnalyse\index'
+.\.venv\Scripts\python.exe run_metrics.py --methods custom,leo,quansyn --category-languages "原文=zh" --source-dir <临时目录> --result-dir <临时目录> --leo-model-folder <模型目录> --no-resume
+```
+
+检查：输出 CSV 为 18 列（不含 NeoSCA）；`MDD` 落在中文的合理区间（约 2~4）；UPOS 分布以 NOUN/VERB/PUNCT 为主而不是 95% 的 `X`。
 
 ### 影响 `custom`、`leo`、`quansyn`、配置或管线输出的改动
 

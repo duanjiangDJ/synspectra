@@ -17,6 +17,17 @@
 - 任务成功/失败以 `task/end` 为准；`error` 事件可能先于 `task/end` 出现。
 - 断点续传：已处理文件名保存在输出 CSV 的 `filename` 列，前端无需维护状态。
 
+CLI 关键参数：`--config`、`--preset all|other|neosca`、`--methods`、`--source-dir`、
+`--result-dir`、`--leo-model-folder`、`--output-suffix`、`--no-resume`、`--log-format`、
+`--log-file`，以及语言相关：
+
+- `--language <id>`：所有类别的默认分析语言（默认 `en`）。
+- `--category-languages "原文=zh,摘要=zh"`：按类别覆盖语言，与 `--language` 合并。
+
+语言档案（`metric_modules/config.py` 的 `language_profiles`）决定每个语言的 Stanza
+语言/模型包、UDPipe 模型文件名，以及该语言不支持的方法（中文禁用 `neosca`，相应
+类别不再写出 NeoSCA 列）。未知语言名会在启动阶段报错。
+
 ## 2. scripts/corpus_import.py
 
 - 扫描结果：`{"type":"corpus","event":"scan","input":"...","groups":[{"path":"...","name":"...","file_count":N}]}`
@@ -32,7 +43,7 @@ CLI：`scan <input>`、`import <input> --source-dir X --conflict skip|overwrite`
 
 ## 3. scripts/resource_manager.py
 
-- `resource`：`{"type":"resource","id":"stanza_model|udpipe_model|jre|stanford_parser|stanford_tregex|python_runtime","status":"connecting|downloading|verifying|extracting|installing|ready|download_failed|install_failed|not_installed|outdated","bytes_done":N,"bytes_total":N,"detail":"..."}`
+- `resource`：`{"type":"resource","id":"stanza_model|stanza_model_zh|udpipe_model|udpipe_model_zh|jre|stanford_parser|stanford_tregex|python_runtime","status":"connecting|downloading|verifying|extracting|installing|ready|download_failed|install_failed|not_installed|outdated","bytes_done":N,"bytes_total":N,"detail":"..."}`
 - `log`：安装过程中的信息/警告。
 - `error`：`{"type":"error","code":"...","title":"...","detail":"...","suggestion":"..."}`
 

@@ -19,6 +19,10 @@ const MIME: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+// Stable loopback port so the renderer origin (and its localStorage) survives
+// restarts; an ephemeral port is used when this one is already taken.
+const PREFERRED_PORT = 8731;
+
 export interface CarrierServerOptions {
   token: string;
   appDistDir: string | null;
@@ -147,10 +151,29 @@ export async function startCarrierServer(options: CarrierServerOptions): Promise
     });
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
-  });
+  // The renderer origin is http://127.0.0.1:<port>, and localStorage is scoped
+  // to the origin: an ephemeral port would drop every UI setting (resource dir,
+  // locale, per-category languages) on each launch. Prefer a stable port and
+  // fall back to an ephemeral one when it is already taken.
+  const listen = (port: number): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      const onError = (error: unknown): void => {
+        server.removeListener("listening", onListening);
+        reject(error);
+      };
+      const onListening = (): void => {
+        server.removeListener("error", onError);
+        resolve();
+      };
+      server.once("error", onError);
+      server.once("listening", onListening);
+      server.listen(port, "127.0.0.1");
+    });
+  try {
+    await listen(PREFERRED_PORT);
+  } catch {
+    await listen(0);
+  }
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
 

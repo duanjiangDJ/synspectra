@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import csv
 import os
 import shutil
@@ -8,14 +9,19 @@ from typing import Any
 import stanza
 
 from . import event_logger
+from .config import category_language, resolve_language_profile
 from .custom_metrics import compute_custom_metrics
-from .fields import fields_for_methods
+from .fields import fields_for_methods, filter_fields_for_methods
 from .leo_dd import calculate_folder_mdd_ndd
 from .neosca_metrics import NeoSCABatcher
-from .parallel import parse_files_parallel
+from .parallel import create_process_pool, parse_files_parallel
 from .quansyn_metrics import compute_quansyn_text_metrics
 from .stanza_conllu import text_to_conllu
 from .text_utils import clean_text, extract_text_from_file
+
+# Serial runs load one Stanza pipeline per language profile and keep it around,
+# so a mixed-language corpus does not reload the models for every category.
+_STANZA_PIPELINES: dict[tuple[str, str, str], Any] = {}
 
 
 def resolve_path(base_dir: str, path: str) -> str:
@@ -34,20 +40,54 @@ def enabled_methods(config: dict[str, Any]) -> dict[str, bool]:
     }
 
 
-def load_stanza_pipeline(config: dict[str, Any]):
-    stanza_config = config.get("stanza", {})
+def category_settings(
+    config: dict[str, Any],
+    methods: dict[str, bool],
+    category_name: str,
+) -> tuple[str, dict[str, bool], dict[str, Any], dict[str, Any], list[str]]:
+    """Resolves the language profile of one category into concrete settings.
+
+    Returns (language, effective methods, stanza config, leo config,
+    methods disabled for this language).
+    """
+    language = category_language(config, category_name)
+    profile = resolve_language_profile(config, language)
+    stanza_config = {**config.get("stanza", {}), **profile.get("stanza", {})}
+    leo_config = {**config.get("leo", {}), **profile.get("leo", {})}
+    effective = dict(methods)
+    disabled: list[str] = []
+    for method in profile.get("disabled_methods", []):
+        if effective.get(method, False):
+            effective[method] = False
+            disabled.append(method)
+    return language, effective, stanza_config, leo_config, disabled
+
+
+def load_stanza_pipeline(config: dict[str, Any], stanza_config: dict[str, Any] | None = None):
+    if stanza_config is None:
+        stanza_config = config.get("stanza", {})
+    key = (
+        str(stanza_config.get("language", "en")),
+        str(stanza_config.get("processors", "tokenize,pos,lemma,depparse")),
+        str(stanza_config.get("package", "default")),
+    )
+    cached = _STANZA_PIPELINES.get(key)
+    if cached is not None:
+        return cached
     event_logger.stage(
         "stanza",
         message="Loading Stanza models ...",
         human_message="\nLoading Stanza models ...",
     )
     nlp = stanza.Pipeline(
-        "en",
+        stanza_config.get("language", "en"),
         processors=stanza_config.get("processors", "tokenize,pos,lemma,depparse"),
+        package=stanza_config.get("package", "default"),
         verbose=bool(stanza_config.get("verbose", False)),
         use_gpu=bool(stanza_config.get("use_gpu", False)),
         download_method=stanza_config.get("download_method"),
     )
+    _STANZA_PIPELINES[key] = nlp
     event_logger.log("info", "Stanza models loaded successfully.")
     return nlp
 
@@ -66,10 +106,20 @@ def read_processed_files(output_csv: str) -> tuple[set[str], list[str] | None]:
     return processed_files, fieldnames
 
 
-def read_leo_cache(leo_csv_path: str) -> dict[str, dict[str, float]]:
+def read_leo_cache(leo_csv_path: str, model_file: str | None = None) -> dict[str, dict[str, float]]:
+    """Reads cached Leo results, refusing numbers produced by another model.
+
+    Switching a category's language between runs must not reuse MDD_Leo/NDD_Leo
+    computed with the previous language's UDPipe model.
+    """
     leo_metrics: dict[str, dict[str, float]] = {}
     with open(leo_csv_path, "r", encoding="utf-8") as f:
         for row in csv.DictReader(f):
+            if model_file is not None and row.get("model") != model_file:
+                raise ValueError(
+                    f"cache was produced with {row.get('model') or 'an unknown model'}, "
+                    f"expected {model_file}"
+                )
             filename = f"{row['file_id']}.txt"
             leo_metrics[filename] = {
                 "MDD_Leo": round(float(row["mdd"]), 4),
@@ -78,14 +128,22 @@ def read_leo_cache(leo_csv_path: str) -> dict[str, dict[str, float]]:
     return leo_metrics
 
 
-def get_leo_metrics(category_path: str, source_dir: str, config: dict[str, Any]) -> tuple[dict[str, dict[str, float]], str]:
+def get_leo_metrics(
+    category_path: str,
+    source_dir: str,
+    config: dict[str, Any],
+    leo_config: dict[str, Any] | None = None,
+) -> tuple[dict[str, dict[str, float]], str]:
     category_name = os.path.basename(category_path)
     leo_results_dir = os.path.join(source_dir, f"{category_name}_results_dd")
     leo_csv_path = os.path.join(leo_results_dir, "0mdd_ndd_results.csv")
+    if leo_config is None:
+        leo_config = config.get("leo", {})
+    model_file = leo_config.get("model_file", "english-ewt-ud-2.4-190531.udpipe")
 
     if os.path.exists(leo_csv_path):
         try:
-            metrics = read_leo_cache(leo_csv_path)
+            metrics = read_leo_cache(leo_csv_path, model_file=model_file)
             event_logger.log(
                 "info",
                 f"Loaded Leo metrics from existing file, total {len(metrics)} files.",
@@ -104,12 +162,12 @@ def get_leo_metrics(category_path: str, source_dir: str, config: dict[str, Any])
         message=f"Calculating Leo metrics for {category_name}",
         human_message=f"Calculating Leo metrics for {category_name}...",
     )
-    leo_config = config.get("leo", {})
     try:
         return calculate_folder_mdd_ndd(
             texts_folder=category_path,
             language_model_folder=leo_config.get("language_model_folder", "C:/"),
             results_folder=leo_results_dir,
+            model_file=model_file,
             progress_cb=lambda filename, done, total: event_logger.progress(
                 category_name, filename, "leo", done, total
             ),
@@ -166,6 +224,16 @@ def process_category_folder(
         )
         return None
 
+    language, methods, stanza_config, leo_config, disabled_methods = category_settings(
+        config, methods, category_name
+    )
+    if disabled_methods:
+        event_logger.log(
+            "warning",
+            f"Language '{language}': {', '.join(disabled_methods)} not supported, "
+            f"skipped for category {category_name}.",
+        )
+
     txt_files_all = sorted(filename for filename in os.listdir(category_path) if filename.endswith(".txt"))
     processed_files: set[str] = set()
     existing_fieldnames: list[str] | None = None
@@ -188,20 +256,24 @@ def process_category_folder(
     leo_metrics: dict[str, dict[str, float]] = {}
     leo_results_dir = os.path.join(source_dir, f"{category_name}_results_dd")
     if methods["leo"]:
-        leo_metrics, leo_results_dir = get_leo_metrics(category_path, source_dir, config)
+        leo_metrics, leo_results_dir = get_leo_metrics(category_path, source_dir, config, leo_config)
 
-    fieldnames = existing_fieldnames or output_fields_for_config(config, methods)
+    fieldnames = existing_fieldnames or filter_fields_for_methods(
+        output_fields_for_config(config, methods), methods
+    )
     file_mode = "a" if existing_fieldnames else "w"
     write_header = existing_fieldnames is None
 
-    stanza_config = config.get("stanza", {})
     workers = int(stanza_config.get("workers", 1) or 1)
     needs_conllu = methods["custom"] or methods["quansyn"]
     chunk_size = max(workers * 4, 4) if workers > 1 else 0
+    if needs_conllu and workers <= 1 and nlp is None:
+        nlp = load_stanza_pipeline(config, stanza_config)
 
     neosca_config = config.get("neosca", {})
-    neosca_timeout = int(neosca_config.get("timeout", 300))
-    neosca_batch_size = int(neosca_config.get("batch_size", 10))
+    neosca_timeout = int(neosca_config.get("timeout", 1800))
+    neosca_batch_size = int(neosca_config.get("batch_size", 2))
+    neosca_words_per_second = int(neosca_config.get("words_per_second", 15))
     neosca_max_length = neosca_config.get("max_length")
     if neosca_max_length is not None:
         neosca_max_length = int(neosca_max_length)
@@ -210,12 +282,19 @@ def process_category_folder(
             timeout=neosca_timeout,
             batch_size=neosca_batch_size,
             max_length=neosca_max_length,
+            words_per_second=neosca_words_per_second,
         )
         if methods["neosca"]
         else None
     )
 
-    with open(output_csv, file_mode, newline="", encoding="utf-8") as csvfile:
+    with contextlib.ExitStack() as stack, open(output_csv, file_mode, newline="", encoding="utf-8") as csvfile:
+        # One worker pool per category: the workers keep their Stanza models
+        # loaded across chunks instead of reloading them every chunk.
+        parse_pool = None
+        if needs_conllu and workers > 1 and chunk_size and len(txt_files) > 1:
+            parse_pool = stack.enter_context(create_process_pool(stanza_config, workers))
+
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames, restval="")
         if write_header:
             writer.writeheader()
@@ -258,6 +337,7 @@ def process_category_folder(
                     [os.path.join(category_path, name) for name in chunk],
                     stanza_config,
                     workers,
+                    pool=parse_pool,
                     on_progress=lambda filepath, done_in_chunk: event_logger.progress(
                         category_name,
                         os.path.basename(filepath),
@@ -280,12 +360,15 @@ def process_category_folder(
 
                 row: dict[str, Any] = {"filename": txt_file}
                 if needs_conllu:
-                    if file_path in conllu_map:
+                    if conllu_map.get(file_path):
                         conllu_str = conllu_map[file_path]
-                    elif nlp is not None:
-                        conllu_str = text_to_conllu(text_content, nlp)
                     else:
-                        conllu_str = ""
+                        # Not parsed by a worker (single-file chunk, or the
+                        # worker failed): parse here instead of silently
+                        # writing zero-valued metrics.
+                        if nlp is None:
+                            nlp = load_stanza_pipeline(config, stanza_config)
+                        conllu_str = text_to_conllu(text_content, nlp)
 
                 if methods["custom"]:
                     event_logger.stage("custom")
@@ -353,11 +436,9 @@ def run_pipeline(config: dict[str, Any], base_dir: str | None = None) -> list[st
         return []
 
     methods = enabled_methods(config)
-    needs_stanza = methods["custom"] or methods["quansyn"]
-    workers = int(config.get("stanza", {}).get("workers", 1) or 1)
-    # With parallel workers each worker process loads its own Stanza copy;
-    # the main process pipeline is only needed for the serial path.
-    nlp = load_stanza_pipeline(config) if needs_stanza and workers <= 1 else None
+    # With parallel workers each worker process loads its own Stanza copy; the
+    # serial path loads one pipeline per language inside the category loop,
+    # because categories may use different languages.
     output_files: list[str] = []
 
     for subdir in [
@@ -370,7 +451,7 @@ def run_pipeline(config: dict[str, Any], base_dir: str | None = None) -> list[st
             message=f"Starting to process category: {subdir}",
             human_message=f"\nStarting to process category: {subdir}",
         )
-        output_csv = process_category_folder(os.path.join(source_dir, subdir), result_dir, source_dir, config, nlp)
+        output_csv = process_category_folder(os.path.join(source_dir, subdir), result_dir, source_dir, config)
         if output_csv:
             output_files.append(output_csv)
 

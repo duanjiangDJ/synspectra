@@ -6,12 +6,16 @@
   import {
     backendPaths,
     categories,
+    categoryLanguageKey,
+    categoryLanguages,
     corpusImporting,
     corpusMutation,
     corpusScan,
     corpusScanning,
+    defaultLanguage,
     resourceDir,
     resultDir,
+    setCategoryLanguage,
     sourceDir,
   } from "../lib/appState";
   import {
@@ -21,6 +25,7 @@
     scanSourceTree,
     spawnBackend,
   } from "../lib/backend";
+  import { LANGUAGE_OPTIONS, languageOption } from "../lib/languages";
   import { t } from "../lib/i18n";
   import { startListening } from "../lib/taskEvents";
   import { addToast, askConfirm, askInput } from "../lib/ui";
@@ -29,6 +34,19 @@
   let scanError = $state("");
   let lastImported: number | undefined;
   let lastMutation = 0;
+
+  const languageOf = (category: string): string =>
+    $categoryLanguages[categoryLanguageKey($sourceDir, category)] ??
+    $defaultLanguage;
+  const nonNeoscaLanguages = $derived(
+    [
+      ...new Set(
+        $categories
+          .map((category) => languageOf(category.name))
+          .filter((language) => !languageOption(language).neosca),
+      ),
+    ].map((language) => $t(languageOption(language).labelKey)),
+  );
 
   async function scan(): Promise<void> {
     const dir = $sourceDir;
@@ -338,6 +356,7 @@
           <tr>
             <th>{$t("workspace.group")}</th>
             <th>{$t("workspace.files")}</th>
+            <th>{$t("workspace.language")}</th>
             <th class="table-actions"></th>
           </tr>
         </thead>
@@ -346,6 +365,21 @@
             <tr>
               <td>{category.name}</td>
               <td>{category.file_count}</td>
+              <td>
+                <select
+                  value={languageOf(category.name)}
+                  onchange={(event) =>
+                    setCategoryLanguage(
+                      $sourceDir,
+                      category.name,
+                      event.currentTarget.value,
+                    )}
+                >
+                  {#each LANGUAGE_OPTIONS as option (option.id)}
+                    <option value={option.id}>{$t(option.labelKey)}</option>
+                  {/each}
+                </select>
+              </td>
               <td class="table-actions">
                 <button
                   type="button"
@@ -366,6 +400,13 @@
           {/each}
         </tbody>
       </table>
+    {/if}
+    {#if nonNeoscaLanguages.length > 0}
+      <p class="muted small">
+        {$t("workspace.neoscaHint", {
+          languages: nonNeoscaLanguages.join(" / "),
+        })}
+      </p>
     {/if}
     {#if scanError}
       <p class="small error-text">{$t("workspace.scanError")}: {scanError}</p>

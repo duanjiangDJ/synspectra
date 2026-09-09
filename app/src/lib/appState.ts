@@ -1,8 +1,20 @@
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 
 import type { BackendPaths, CategoryInfo } from "./backend";
 
 const RESOURCE_DIR_KEY = "syntactic-metrics-resource-dir";
+const CATEGORY_LANGUAGES_KEY = "syntactic-metrics-category-languages";
+const DEFAULT_LANGUAGE_KEY = "syntactic-metrics-default-language";
+
+function readLanguageOverrides(key: string): Record<string, string> {
+  if (typeof localStorage === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
 
 export const backendPaths = writable<BackendPaths | null>(null);
 export const sourceDir = writable("");
@@ -81,4 +93,50 @@ export function setResourceDir(dir: string): void {
       localStorage.removeItem(RESOURCE_DIR_KEY);
     }
   }
+}
+
+export const defaultLanguage = writable<string>(
+  typeof localStorage !== "undefined"
+    ? localStorage.getItem(DEFAULT_LANGUAGE_KEY) ?? "en"
+    : "en",
+);
+
+export function setDefaultLanguage(language: string): void {
+  defaultLanguage.set(language);
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(DEFAULT_LANGUAGE_KEY, language);
+  }
+}
+
+/** Per-category language overrides, keyed by "sourceDir::category". */
+export const categoryLanguages = writable<Record<string, string>>(
+  readLanguageOverrides(CATEGORY_LANGUAGES_KEY),
+);
+
+export function categoryLanguageKey(sourceDir: string, category: string): string {
+  return sourceDir + "::" + category;
+}
+
+export function setCategoryLanguage(
+  sourceDir: string,
+  category: string,
+  language: string,
+): void {
+  categoryLanguages.update((items) => {
+    const next = {
+      ...items,
+      [categoryLanguageKey(sourceDir, category)]: language,
+    };
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(CATEGORY_LANGUAGES_KEY, JSON.stringify(next));
+    }
+    return next;
+  });
+}
+
+export function languageForCategory(sourceDir: string, category: string): string {
+  const overrides = get(categoryLanguages);
+  return (
+    overrides[categoryLanguageKey(sourceDir, category)] ?? get(defaultLanguage)
+  );
 }

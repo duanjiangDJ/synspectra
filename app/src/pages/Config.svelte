@@ -6,16 +6,22 @@
   import {
     alwaysOnTop,
     backendPaths,
+    categories,
+    categoryLanguageKey,
+    categoryLanguages,
+    defaultLanguage,
     forceRerun,
     methods,
     navigate,
     resourceReady,
     resume,
     resultDir,
+    setDefaultLanguage,
     sourceDir,
   } from "../lib/appState";
   import { chooseDirectory, getBackendPaths, setAlwaysOnTop } from "../lib/backend";
   import { locale, setLocale, t, type Locale } from "../lib/i18n";
+  import { LANGUAGE_OPTIONS, languagesInUse } from "../lib/languages";
   import { isMethodReady, refreshResourceReadiness } from "../lib/resources";
   import { setTheme, theme, type Theme } from "../lib/theme";
 
@@ -39,6 +45,16 @@
 
   let readinessChecked = $state(false);
 
+  const languages = $derived(
+    languagesInUse(
+      $categories,
+      (name) =>
+        $categoryLanguages[categoryLanguageKey($sourceDir, name)] ??
+        $defaultLanguage,
+      $defaultLanguage,
+    ),
+  );
+
   function applyPreset(key: string): void {
     methods.set({ ...presets[key] });
   }
@@ -49,13 +65,13 @@
 
   function methodReady(id: string): boolean {
     if ($bridgeKind !== "rpc" || !readinessChecked) return true;
-    return isMethodReady(id, $resourceReady);
+    return isMethodReady(id, $resourceReady, languages);
   }
 
   function anyMissingReady(): boolean {
     if ($bridgeKind !== "rpc" || !readinessChecked) return false;
     return methodList.some(
-      (id) => $methods[id] && !isMethodReady(id, $resourceReady),
+      (id) => $methods[id] && !isMethodReady(id, $resourceReady, languages),
     );
   }
 
@@ -164,6 +180,22 @@
   <div class="config-row">
     <div class="card">
       <h3 class="card-title">{$t("config.runOptions")}</h3>
+      <div class="path-row">
+        <span class="path-label">{$t("config.defaultLanguage")}</span>
+        <div class="segmented" role="group" aria-label={$t("config.defaultLanguage")}>
+          {#each LANGUAGE_OPTIONS as option (option.id)}
+            <button
+              type="button"
+              class="segment"
+              class:active={$defaultLanguage === option.id}
+              onclick={() => setDefaultLanguage(option.id)}
+            >
+              {$t(option.labelKey)}
+            </button>
+          {/each}
+        </div>
+      </div>
+      <p class="muted small">{$t("config.languageHint")}</p>
       <div class="segmented" role="group" aria-label={$t("config.runOptions")}>
         <button
           type="button"

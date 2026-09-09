@@ -6,9 +6,22 @@
       "kind": "stanza",
       "version": "latest",
       "platforms": ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"],
+      "language": "en",
+      "package": "default",
       "processors": "tokenize,pos,lemma,depparse",
       "resources_url": "https://gh-proxy.com/https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main",
-      "model_url": "https://gh-proxy.com/https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main/models",
+      "model_url": "https://huggingface.co/stanfordnlp/stanza-{lang}/resolve/v{resources_version}/models/{filename}",
+      "target": "stanza_resources"
+    },
+    "stanza_model_zh": {
+      "kind": "stanza",
+      "version": "latest",
+      "platforms": ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"],
+      "language": "zh-hans",
+      "package": "default_fast",
+      "processors": "tokenize,pos,lemma,depparse",
+      "resources_url": "https://gh-proxy.com/https://raw.githubusercontent.com/stanfordnlp/stanza-resources/main",
+      "model_url": "https://hf-mirror.com/stanfordnlp/stanza-{lang}/resolve/v{resources_version}/models/{filename}",
       "target": "stanza_resources"
     },
     "udpipe_model": {
@@ -25,6 +38,21 @@
       "size": 16477964,
       "extract": false,
       "target": "models/english-ewt-ud-2.4-190531.udpipe"
+    },
+    "udpipe_model_zh": {
+      "kind": "file",
+      "version": "chinese-gsd-ud-2.4-190531",
+      "platforms": ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"],
+      "urls": {
+        "all": "https://raw.githubusercontent.com/jwijffels/udpipe.models.ud.2.4/master/inst/udpipe-ud-2.4-190531/chinese-gsd-ud-2.4-190531.udpipe"
+      },
+      "mirrors": [
+        "https://ghfast.top/https://raw.githubusercontent.com/jwijffels/udpipe.models.ud.2.4/master/inst/udpipe-ud-2.4-190531/chinese-gsd-ud-2.4-190531.udpipe"
+      ],
+      "sha256": "075f9d7ba156fcdc204f914783395f88d663cf521154ba388db703c29ce956b1",
+      "size": 14001662,
+      "extract": false,
+      "target": "models/chinese-gsd-ud-2.4-190531.udpipe"
     },
     "jre": {
       "kind": "archive",
