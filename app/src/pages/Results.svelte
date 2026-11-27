@@ -13,6 +13,7 @@
     getBackendPaths,
     listCsvFiles,
     openInFileManager,
+    pathExists,
     readCsvPreview,
   } from "../lib/backend";
   import { t } from "../lib/i18n";
@@ -23,6 +24,32 @@
     headers: string[];
     rows: string[][];
   } | null>(null);
+  let xlsxFiles = $state<Record<string, boolean>>({});
+
+  async function refreshXlsxStatus(dir: string, files: string[]): Promise<void> {
+    if (!dir || files.length === 0) {
+      xlsxFiles = {};
+      return;
+    }
+    const entries = await Promise.all(
+      files.map(async (file) => {
+        if (file.toLowerCase().endsWith(".xlsx")) {
+          return [file, true] as const;
+        }
+        const xlsxPath = dir + "/" + file.replace(/\.csv$/i, ".xlsx");
+        try {
+          return [file, await pathExists(xlsxPath)] as const;
+        } catch {
+          return [file, false] as const;
+        }
+      }),
+    );
+    xlsxFiles = Object.fromEntries(entries);
+  }
+
+  $effect(() => {
+    void refreshXlsxStatus($resultDir, $resultFiles);
+  });
 
   async function init(): Promise<void> {
     try {
@@ -51,6 +78,14 @@
 
   async function openDir(): Promise<void> {
     if ($resultDir) await openInFileManager($resultDir);
+  }
+
+  async function openExcel(file: string): Promise<void> {
+    if (!$resultDir) return;
+    const target = file.toLowerCase().endsWith(".xlsx")
+      ? file
+      : file.replace(/\.csv$/i, ".xlsx");
+    await openInFileManager($resultDir + "/" + target);
   }
 
   async function previewFile(file: string): Promise<void> {
@@ -90,6 +125,15 @@
             <tr>
               <td><code>{file}</code></td>
               <td class="table-actions">
+                {#if xlsxFiles[file]}
+                  <button
+                    type="button"
+                    class="button small-button secondary"
+                    onclick={() => openExcel(file)}
+                  >
+                    {$t("results.openExcel")}
+                  </button>
+                {/if}
                 <button
                   type="button"
                   class="button small-button"

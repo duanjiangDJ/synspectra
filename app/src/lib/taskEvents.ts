@@ -12,6 +12,7 @@ import {
   corpusScanning,
   currentChildId,
   defaultLanguage,
+  exportDependencies,
   forceRerun,
   languageForCategory,
   lastTaskStatus,
@@ -390,6 +391,7 @@ export async function startRun(): Promise<void> {
     );
   }
   if (get(forceRerun)) args.push("--no-resume");
+  args.push(get(exportDependencies) ? "--export-dependencies" : "--no-export-dependencies");
 
   const request: SpawnRequest = {
     program: python,

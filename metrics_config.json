@@ -3,6 +3,7 @@
   "result_dir": "result",
   "resume": true,
   "cleanup_leo_results": true,
+  "export_dependencies": true,
   "output_suffix": "",
   "methods": {
     "custom": true,

@@ -10,6 +10,7 @@
     categoryLanguageKey,
     categoryLanguages,
     defaultLanguage,
+    exportDependencies,
     forceRerun,
     methods,
     navigate,
@@ -214,6 +215,12 @@
           {$t("config.forceRerun")}
         </button>
       </div>
+      <Checkbox
+        checked={$exportDependencies}
+        label={$t("config.exportDependencies")}
+        onChange={(value) => exportDependencies.set(value)}
+      />
+      <p class="muted small">{$t("config.exportDependenciesHint")}</p>
 
     </div>
 

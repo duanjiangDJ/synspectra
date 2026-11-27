@@ -324,12 +324,13 @@ python run_metrics.py --preset other   # 自定义 + LeoDD Python 复刻 + QuanS
 python run_metrics.py --preset all     # 启用全部方法
 python run_metrics.py --preset neosca  # 仅 NeoSCA，输出后缀为 _NeoSCA
 python run_metrics.py --methods custom,leo,quansyn --no-resume
+python run_metrics.py --preset other --no-export-dependencies  # 仅输出 Metrics 工作表，不导出依存表
 ```
 
 脚本将：
 - 遍历 `source/` 下的每个子文件夹。
 - 对每个 `.txt` 文件，清洗文本并计算所有指标。
-- 逐步将结果写入 `result/<类别名称>.csv`。
+- 将指标与两种 UD v2 依存关系合并写入 `result/<类别名称>.xlsx`（不生成 `.csv`）。
 - 支持断点续传：如果运行中断，重新运行将自动跳过已处理的文件；如需强制重算可使用 `--no-resume`。
 
 ### 5. 语言配置（中文 / 英文混合语料）
@@ -368,16 +369,24 @@ python run_metrics.py --language en --category-languages "原文=zh"
 
 ## 输出文件
 
-结果保存在 `result/` 目录中，以 CSV 文件形式存储：
+结果保存在 `result/` 目录中，每个类别生成一个 `.xlsx` 工作簿（不再生成 `.csv`）：
 
 ```
 result/
-├── group_A.csv
-├── group_B.csv
+├── group_A.xlsx
+├── group_B.xlsx
 └── ...
 ```
 
-每个 CSV 包含以下列：
+默认配置（`export_dependencies: true`）下，每个 `.xlsx` 包含 3 个工作表：
+
+- **`Metrics`**：文本级指标汇总表，包含以下列：
+- **`Stanza_UD`**：Stanza 解析器的逐词 UD v2 依存标注（`filename`、`sid`、`token_id`、`token`、`lemma`、`upos`、`head_id`、`head_token`、`deprel`、`dep_distance`、`sentence`）。
+- **`UDPipe_UD`**：UDPipe（LeoDD）解析器的逐词 UD v2 依存标注，字段与 `Stanza_UD` 对齐，方便直接对比两套解析结果。
+
+如不需要依存标注工作表，可在配置中将 `"export_dependencies"` 设为 `false`，或在命令行传入 `--no-export-dependencies`（仅写入 `Metrics` 工作表）。
+
+`Metrics` 工作表包含以下列：
 
 | 列名                                             | 描述                                             | 来源       |
 | ------------------------------------------------ | ------------------------------------------------ | ---------- |

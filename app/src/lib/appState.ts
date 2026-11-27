@@ -28,6 +28,7 @@ export const methods = writable<Record<string, boolean>>({
 });
 export const resume = writable(true);
 export const forceRerun = writable(false);
+export const exportDependencies = writable(true);
 
 export const taskRunning = writable(false);
 export const currentChildId = writable<number | null>(null);

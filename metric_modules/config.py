@@ -44,6 +44,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "result_dir": "result",
     "resume": True,
     "cleanup_leo_results": True,
+    "export_dependencies": True,
     "output_suffix": "",
     "methods": {
         "custom": True,

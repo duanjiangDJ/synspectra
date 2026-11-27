@@ -332,12 +332,13 @@ python run_metrics.py --preset other   # Custom + LeoDD Python reimplementation 
 python run_metrics.py --preset all     # Enable every method
 python run_metrics.py --preset neosca  # NeoSCA only, with _NeoSCA output suffix
 python run_metrics.py --methods custom,leo,quansyn --no-resume
+python run_metrics.py --preset other --no-export-dependencies  # Write Metrics sheet only
 ```
 
 The script will:
 - Traverse each subfolder under `source/`.
 - For each `.txt` file, clean the text and compute all metrics.
-- Write results progressively to `result/<category_name>.csv`.
+- Save metrics and both UD v2 dependency annotations into `result/<category_name>.xlsx` (no `.csv` is generated).
 - Support checkpoint/resume: if interrupted, rerunning will automatically skip already-processed files. Use `--no-resume` to force recomputation.
 
 ### 5. Language configuration (mixed Chinese / English corpora)
@@ -376,16 +377,24 @@ Notes:
 
 ## Output Files
 
-Results are saved in the `result/` directory as CSV files:
+Results are saved in the `result/` directory as one `.xlsx` workbook per category (no `.csv` is generated):
 
 ```
 result/
-├── group_A.csv
-├── group_B.csv
+├── group_A.xlsx
+├── group_B.xlsx
 └── ...
 ```
 
-Each CSV contains the following columns:
+By default (`export_dependencies: true`), each `.xlsx` workbook contains three sheets:
+
+- **`Metrics`**: text-level metric summary table.
+- **`Stanza_UD`**: token-level UD v2 annotations from Stanza (`filename`, `sid`, `token_id`, `token`, `lemma`, `upos`, `head_id`, `head_token`, `deprel`, `dep_distance`, `sentence`).
+- **`UDPipe_UD`**: token-level UD v2 annotations from UDPipe (LeoDD), aligned to the same columns for side-by-side comparison.
+
+To omit the dependency sheets and write only `Metrics`, set `"export_dependencies": false` in `metrics_config.json` or pass `--no-export-dependencies`.
+
+The `Metrics` sheet contains the following columns:
 
 | Column | Description | Source |
 |---|---|---|

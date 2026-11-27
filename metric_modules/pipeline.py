@@ -11,6 +11,12 @@ import stanza
 from . import event_logger
 from .config import category_language, resolve_language_profile
 from .custom_metrics import compute_custom_metrics
+from .dependency_export import (
+    extract_stanza_dependencies,
+    read_existing_workbook,
+    read_udpipe_raw_csv,
+    write_category_workbook,
+)
 from .fields import fields_for_methods, filter_fields_for_methods
 from .leo_dd import calculate_folder_mdd_ndd
 from .neosca_metrics import NeoSCABatcher
@@ -90,20 +96,6 @@ def load_stanza_pipeline(config: dict[str, Any], stanza_config: dict[str, Any] |
     _STANZA_PIPELINES[key] = nlp
     event_logger.log("info", "Stanza models loaded successfully.")
     return nlp
-
-
-def read_processed_files(output_csv: str) -> tuple[set[str], list[str] | None]:
-    processed_files: set[str] = set()
-    if not os.path.exists(output_csv):
-        return processed_files, None
-
-    with open(output_csv, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        fieldnames = reader.fieldnames
-        for row in reader:
-            if row.get("filename"):
-                processed_files.add(row["filename"])
-    return processed_files, fieldnames
 
 
 def read_leo_cache(leo_csv_path: str, model_file: str | None = None) -> dict[str, dict[str, float]]:
@@ -215,7 +207,7 @@ def process_category_folder(
     methods = enabled_methods(config)
     category_name = os.path.basename(category_path)
     output_suffix = config.get("output_suffix", "")
-    output_csv = os.path.join(output_dir, f"{category_name}{output_suffix}.csv")
+    output_xlsx = os.path.join(output_dir, f"{category_name}{output_suffix}.xlsx")
 
     if not os.path.exists(category_path):
         event_logger.log(
@@ -237,9 +229,19 @@ def process_category_folder(
     txt_files_all = sorted(filename for filename in os.listdir(category_path) if filename.endswith(".txt"))
     processed_files: set[str] = set()
     existing_fieldnames: list[str] | None = None
+    metric_rows: list[dict[str, Any]] = []
+    existing_stanza_rows: list[list[Any]] | None = None
+    existing_udpipe_rows: list[list[Any]] | None = None
+
     if config.get("resume", True):
         try:
-            processed_files, existing_fieldnames = read_processed_files(output_csv)
+            (
+                processed_files,
+                existing_fieldnames,
+                metric_rows,
+                existing_stanza_rows,
+                existing_udpipe_rows,
+            ) = read_existing_workbook(output_xlsx)
             if processed_files:
                 event_logger.log(
                     "info",
@@ -247,25 +249,36 @@ def process_category_folder(
                 )
         except Exception as exc:
             event_logger.log("warning", f"Error reading progress file, restarting: {exc}")
+            processed_files = set()
+            existing_fieldnames = None
+            metric_rows = []
+            existing_stanza_rows = None
+            existing_udpipe_rows = None
+
+    export_deps = bool(config.get("export_dependencies", True))
+    needs_conllu = methods["custom"] or methods["quansyn"]
+    need_stanza_sheet = export_deps and needs_conllu
+    need_udpipe_sheet = export_deps and methods["leo"]
+    stanza_missing_sheet = need_stanza_sheet and existing_stanza_rows is None
+    udpipe_missing_sheet = need_udpipe_sheet and existing_udpipe_rows is None
 
     txt_files = [filename for filename in txt_files_all if filename not in processed_files]
-    if not txt_files:
+    if not txt_files and not (stanza_missing_sheet or udpipe_missing_sheet):
         event_logger.log("info", "All files have been processed, nothing to continue.")
-        return output_csv
+        return output_xlsx
+    if not txt_files:
+        event_logger.log("info", "All metric rows already processed; completing dependency sheets.")
 
     leo_metrics: dict[str, dict[str, float]] = {}
     leo_results_dir = os.path.join(source_dir, f"{category_name}_results_dd")
-    if methods["leo"]:
+    if methods["leo"] and (txt_files or udpipe_missing_sheet):
         leo_metrics, leo_results_dir = get_leo_metrics(category_path, source_dir, config, leo_config)
 
     fieldnames = existing_fieldnames or filter_fields_for_methods(
         output_fields_for_config(config, methods), methods
     )
-    file_mode = "a" if existing_fieldnames else "w"
-    write_header = existing_fieldnames is None
 
     workers = int(stanza_config.get("workers", 1) or 1)
-    needs_conllu = methods["custom"] or methods["quansyn"]
     chunk_size = max(workers * 4, 4) if workers > 1 else 0
     if needs_conllu and workers <= 1 and nlp is None:
         nlp = load_stanza_pipeline(config, stanza_config)
@@ -284,122 +297,205 @@ def process_category_folder(
             max_length=neosca_max_length,
             words_per_second=neosca_words_per_second,
         )
-        if methods["neosca"]
+        if methods["neosca"] and txt_files
         else None
     )
 
-    with contextlib.ExitStack() as stack, open(output_csv, file_mode, newline="", encoding="utf-8") as csvfile:
+    stanza_rows_by_file: dict[str, list[list[Any]]] = {}
+    if existing_stanza_rows is not None:
+        for srow in existing_stanza_rows:
+            if srow:
+                stanza_rows_by_file.setdefault(str(srow[0]), []).append(srow)
+
+    files_to_parse_count = len(txt_files_all) if stanza_missing_sheet else len(txt_files)
+
+    with contextlib.ExitStack() as stack:
         # One worker pool per category: the workers keep their Stanza models
         # loaded across chunks instead of reloading them every chunk.
         parse_pool = None
-        if needs_conllu and workers > 1 and chunk_size and len(txt_files) > 1:
+        if needs_conllu and workers > 1 and chunk_size and files_to_parse_count > 1:
             parse_pool = stack.enter_context(create_process_pool(stanza_config, workers))
 
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, restval="")
-        if write_header:
-            writer.writeheader()
+        if txt_files:
+            written = len(txt_files_all) - len(txt_files)
+            held_rows: list[tuple[str, dict[str, Any]]] = []
+            dirty_metrics = False
 
-        written = len(txt_files_all) - len(txt_files)
-        held_rows: list[tuple[str, dict[str, Any]]] = []
-
-        def write_row(txt_file: str, row: dict[str, Any]) -> None:
-            nonlocal written
-            writer.writerow({field: row.get(field, "") for field in fieldnames})
-            csvfile.flush()
-            written += 1
-            event_logger.progress(
-                category_name,
-                txt_file,
-                "write",
-                written,
-                len(txt_files_all),
-                human_message=f"Write completed: {txt_file}",
-            )
-
-        def finalize_held() -> None:
-            for held_file, held_row in held_rows:
-                if batcher is not None:
-                    held_row.update(batcher.take(held_file))
-                write_row(held_file, held_row)
-            held_rows.clear()
-
-        ranges = _chunk_ranges(len(txt_files), chunk_size) if chunk_size else [(0, len(txt_files))]
-        for start, end in ranges:
-            chunk = txt_files[start:end]
-            conllu_map: dict[str, str] = {}
-            if needs_conllu and workers > 1 and len(chunk) > 1:
-                event_logger.stage(
-                    "stanza",
-                    message=f"Parsing {len(chunk)} files with {workers} workers",
+            def record_row(txt_file: str, row: dict[str, Any]) -> None:
+                nonlocal written, dirty_metrics
+                metric_rows.append({field: row.get(field, "") for field in fieldnames})
+                dirty_metrics = True
+                written += 1
+                event_logger.progress(
+                    category_name,
+                    txt_file,
+                    "write",
+                    written,
+                    len(txt_files_all),
+                    human_message=f"Write completed: {txt_file}",
                 )
-                written_before_chunk = written
-                conllu_map = parse_files_parallel(
-                    [os.path.join(category_path, name) for name in chunk],
-                    stanza_config,
-                    workers,
-                    pool=parse_pool,
-                    on_progress=lambda filepath, done_in_chunk: event_logger.progress(
-                        category_name,
-                        os.path.basename(filepath),
+
+            def flush_progress_workbook() -> None:
+                nonlocal dirty_metrics
+                if not dirty_metrics:
+                    return
+                write_category_workbook(output_xlsx, fieldnames, metric_rows, None, None)
+                dirty_metrics = False
+
+            def finalize_held() -> None:
+                for held_file, held_row in held_rows:
+                    if batcher is not None:
+                        held_row.update(batcher.take(held_file))
+                    record_row(held_file, held_row)
+                held_rows.clear()
+                flush_progress_workbook()
+
+            ranges = _chunk_ranges(len(txt_files), chunk_size) if chunk_size else [(0, len(txt_files))]
+            for start, end in ranges:
+                chunk = txt_files[start:end]
+                conllu_map: dict[str, str] = {}
+                if needs_conllu and workers > 1 and len(chunk) > 1:
+                    event_logger.stage(
                         "stanza",
-                        written_before_chunk + done_in_chunk,
-                        len(txt_files_all),
-                    ),
-                )
+                        message=f"Parsing {len(chunk)} files with {workers} workers",
+                    )
+                    written_before_chunk = written
+                    conllu_map = parse_files_parallel(
+                        [os.path.join(category_path, name) for name in chunk],
+                        stanza_config,
+                        workers,
+                        pool=parse_pool,
+                        on_progress=lambda filepath, done_in_chunk: event_logger.progress(
+                            category_name,
+                            os.path.basename(filepath),
+                            "stanza",
+                            written_before_chunk + done_in_chunk,
+                            len(txt_files_all),
+                        ),
+                    )
 
-            for txt_file in chunk:
-                file_path = os.path.join(category_path, txt_file)
-                text_content = clean_text(extract_text_from_file(file_path))
-                if not text_content:
-                    event_logger.log("warning", f"{txt_file}: text is empty, skipping")
-                    continue
-                event_logger.stage(
-                    "file",
-                    message=f"{txt_file}: {text_content[:30]}...",
-                )
+                for txt_file in chunk:
+                    file_path = os.path.join(category_path, txt_file)
+                    text_content = clean_text(extract_text_from_file(file_path))
+                    if not text_content:
+                        event_logger.log("warning", f"{txt_file}: text is empty, skipping")
+                        if need_stanza_sheet:
+                            stanza_rows_by_file[txt_file] = []
+                        continue
+                    event_logger.stage(
+                        "file",
+                        message=f"{txt_file}: {text_content[:30]}...",
+                    )
 
-                row: dict[str, Any] = {"filename": txt_file}
-                if needs_conllu:
-                    if conllu_map.get(file_path):
-                        conllu_str = conllu_map[file_path]
-                    else:
-                        # Not parsed by a worker (single-file chunk, or the
-                        # worker failed): parse here instead of silently
-                        # writing zero-valued metrics.
-                        if nlp is None:
-                            nlp = load_stanza_pipeline(config, stanza_config)
-                        conllu_str = text_to_conllu(text_content, nlp)
+                    row: dict[str, Any] = {"filename": txt_file}
+                    if needs_conllu:
+                        if conllu_map.get(file_path):
+                            conllu_str = conllu_map[file_path]
+                        else:
+                            # Not parsed by a worker (single-file chunk, or the
+                            # worker failed): parse here instead of silently
+                            # writing zero-valued metrics.
+                            if nlp is None:
+                                nlp = load_stanza_pipeline(config, stanza_config)
+                            conllu_str = text_to_conllu(text_content, nlp)
+                        if need_stanza_sheet:
+                            stanza_rows_by_file[txt_file] = extract_stanza_dependencies(txt_file, conllu_str)
 
-                if methods["custom"]:
-                    event_logger.stage("custom")
-                    event_logger.human("Calculating custom metrics...\t", end=" ")
-                    row.update(compute_custom_metrics(conllu_str))
-                    event_logger.human("Parsing completed.")
-                if methods["leo"] and txt_file in leo_metrics:
-                    event_logger.stage("leo")
-                    row.update(leo_metrics[txt_file])
-                if methods["quansyn"]:
-                    event_logger.stage("quansyn")
-                    event_logger.human("Calculating QuanSyn metrics...\t", end=" ")
-                    row.update(compute_quansyn_text_metrics(conllu_str))
-                    event_logger.human("Parsing completed.")
-                if batcher is not None:
-                    event_logger.stage("neosca")
-                    event_logger.human("Calculating NeoSCA metrics...\t", end=" ")
-                    flushed = batcher.submit(txt_file, text_content)
-                    held_rows.append((txt_file, row))
-                    if flushed:
+                    if methods["custom"]:
+                        event_logger.stage("custom")
+                        event_logger.human("Calculating custom metrics...\t", end=" ")
+                        row.update(compute_custom_metrics(conllu_str))
                         event_logger.human("Parsing completed.")
-                        finalize_held()
-                else:
-                    write_row(txt_file, row)
+                    if methods["leo"] and txt_file in leo_metrics:
+                        event_logger.stage("leo")
+                        row.update(leo_metrics[txt_file])
+                    if methods["quansyn"]:
+                        event_logger.stage("quansyn")
+                        event_logger.human("Calculating QuanSyn metrics...\t", end=" ")
+                        row.update(compute_quansyn_text_metrics(conllu_str))
+                        event_logger.human("Parsing completed.")
+                    if batcher is not None:
+                        event_logger.stage("neosca")
+                        event_logger.human("Calculating NeoSCA metrics...\t", end=" ")
+                        flushed = batcher.submit(txt_file, text_content)
+                        held_rows.append((txt_file, row))
+                        if flushed:
+                            event_logger.human("Parsing completed.")
+                            finalize_held()
+                    else:
+                        record_row(txt_file, row)
 
-        if batcher is not None and held_rows:
-            batcher.flush()
-            event_logger.human("Parsing completed.")
-            finalize_held()
+                if batcher is None and (need_stanza_sheet or need_udpipe_sheet or end < len(txt_files)):
+                    flush_progress_workbook()
 
-    final_processed, _ = read_processed_files(output_csv)
+            if batcher is not None and held_rows:
+                batcher.flush()
+                event_logger.human("Parsing completed.")
+                finalize_held()
+
+        if need_stanza_sheet:
+            missing_for_export = [
+                filename for filename in txt_files_all if filename not in stanza_rows_by_file
+            ]
+            if missing_for_export:
+                extra_conllu: dict[str, str] = {}
+                if parse_pool is not None and len(missing_for_export) > 1:
+                    event_logger.stage(
+                        "stanza",
+                        message=f"Parsing {len(missing_for_export)} resumed files with {workers} workers",
+                    )
+                    extra_conllu = parse_files_parallel(
+                        [os.path.join(category_path, name) for name in missing_for_export],
+                        stanza_config,
+                        workers,
+                        pool=parse_pool,
+                    )
+                for txt_file in missing_for_export:
+                    file_path = os.path.join(category_path, txt_file)
+                    if extra_conllu.get(file_path):
+                        stanza_rows_by_file[txt_file] = extract_stanza_dependencies(
+                            txt_file, extra_conllu[file_path]
+                        )
+                        continue
+                    text_content = clean_text(extract_text_from_file(file_path))
+                    if not text_content:
+                        stanza_rows_by_file[txt_file] = []
+                        continue
+                    if nlp is None:
+                        nlp = load_stanza_pipeline(config, stanza_config)
+                    stanza_rows_by_file[txt_file] = extract_stanza_dependencies(
+                        txt_file, text_to_conllu(text_content, nlp)
+                    )
+
+    stanza_rows: list[list[Any]] | None = None
+    if need_stanza_sheet:
+        stanza_rows = []
+        for txt_file in txt_files_all:
+            stanza_rows.extend(stanza_rows_by_file.get(txt_file, []))
+
+    udpipe_rows: list[list[Any]] | None = None
+    if need_udpipe_sheet:
+        if os.path.isdir(leo_results_dir):
+            udpipe_rows = []
+            for txt_file in txt_files_all:
+                raw_csv_path = os.path.join(
+                    leo_results_dir,
+                    f"{os.path.splitext(txt_file)[0]}_raw_dependencies.csv",
+                )
+                udpipe_rows.extend(read_udpipe_raw_csv(txt_file, raw_csv_path))
+        elif existing_udpipe_rows is not None:
+            udpipe_rows = existing_udpipe_rows
+        else:
+            udpipe_rows = []
+
+    if metric_rows or stanza_rows is not None or udpipe_rows is not None:
+        write_category_workbook(output_xlsx, fieldnames, metric_rows, stanza_rows, udpipe_rows)
+
+    final_processed = {
+        str(item.get("filename", ""))
+        for item in metric_rows
+        if item.get("filename")
+    }
     if methods["leo"]:
         if len(final_processed) == len(txt_files_all) and config.get("cleanup_leo_results", True):
             shutil.rmtree(leo_results_dir, ignore_errors=True)
@@ -415,9 +511,9 @@ def process_category_folder(
 
     event_logger.log(
         "info",
-        f"Folder {category_name} processing completed, results saved to {output_csv}",
+        f"Folder {category_name} processing completed, results saved to {output_xlsx}",
     )
-    return output_csv
+    return output_xlsx
 
 
 def run_pipeline(config: dict[str, Any], base_dir: str | None = None) -> list[str]:

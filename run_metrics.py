@@ -45,7 +45,20 @@ def main() -> None:
         help='Per-category language overrides, e.g. "原文=zh,摘要=zh".',
     )
     parser.add_argument("--output-suffix", help="Override output_suffix from the config file.")
-    parser.add_argument("--no-resume", action="store_true", help="Ignore existing progress CSV files and rewrite outputs.")
+    parser.add_argument("--no-resume", action="store_true", help="Ignore existing progress workbooks and rewrite outputs.")
+    parser.add_argument(
+        "--export-dependencies",
+        dest="export_dependencies",
+        action="store_true",
+        default=None,
+        help="Include Stanza_UD and UDPipe_UD dependency sheets in the output .xlsx workbook (default).",
+    )
+    parser.add_argument(
+        "--no-export-dependencies",
+        dest="export_dependencies",
+        action="store_false",
+        help="Write only the Metrics sheet in the output .xlsx workbook.",
+    )
     parser.add_argument(
         "--log-format",
         choices=("text", "jsonl"),
@@ -99,6 +112,8 @@ def main() -> None:
         config["output_suffix"] = args.output_suffix
     if args.no_resume:
         config["resume"] = False
+    if args.export_dependencies is not None:
+        config["export_dependencies"] = args.export_dependencies
 
     methods = [name for name, enabled in config.get("methods", {}).items() if enabled]
     event_logger.task_start(task_id, preset=args.preset, methods=methods)

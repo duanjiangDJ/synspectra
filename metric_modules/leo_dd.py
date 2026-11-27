@@ -17,6 +17,8 @@ class DependencyRow:
     dep_relation: str
     token_id: int
     head_token_id: int
+    lemma: str = ""
+    upos: str = ""
 
 
 @dataclass(frozen=True)
@@ -44,15 +46,15 @@ def annotate_text(text: str, pipeline) -> list[DependencyRow]:
 
     rows: list[DependencyRow] = []
     sentence_id = 0
-    sentence_tokens: list[tuple[int, str, str, int]] = []
+    sentence_tokens: list[tuple[int, str, str, str, str, int]] = []
 
     def flush_sentence() -> None:
         nonlocal sentence_id, sentence_tokens
         if not sentence_tokens:
             return
         sentence_id += 1
-        token_by_id = {token_id: token for token_id, token, _, _ in sentence_tokens}
-        for token_id, token, dep_relation, head_token_id in sentence_tokens:
+        token_by_id = {token_id: token for token_id, token, _, _, _, _ in sentence_tokens}
+        for token_id, token, lemma, upos, dep_relation, head_token_id in sentence_tokens:
             rows.append(
                 DependencyRow(
                     sid=sentence_id,
@@ -61,6 +63,8 @@ def annotate_text(text: str, pipeline) -> list[DependencyRow]:
                     dep_relation=dep_relation,
                     token_id=token_id,
                     head_token_id=head_token_id,
+                    lemma=lemma,
+                    upos=upos,
                 )
             )
         sentence_tokens = []
@@ -81,7 +85,7 @@ def annotate_text(text: str, pipeline) -> list[DependencyRow]:
             head_token_id = int(parts[6])
         except ValueError:
             continue
-        sentence_tokens.append((token_id, parts[1], parts[7], head_token_id))
+        sentence_tokens.append((token_id, parts[1], parts[2], parts[3], parts[7], head_token_id))
 
     flush_sentence()
     return rows
@@ -152,7 +156,16 @@ def calculate_folder_mdd_ndd(
         with open(raw_path, "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.DictWriter(
                 csvfile,
-                fieldnames=["sid", "token", "token_head", "dep_relation", "token_id", "head_token_id"],
+                fieldnames=[
+                    "sid",
+                    "token",
+                    "token_head",
+                    "dep_relation",
+                    "token_id",
+                    "head_token_id",
+                    "lemma",
+                    "upos",
+                ],
             )
             writer.writeheader()
             for row in dependencies:
