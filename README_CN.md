@@ -304,7 +304,7 @@ pip install -r requirements.txt
 | `neosca.words_per_second` | 15 | 超时按批次词数自动放大：`max(timeout, 词数/15)`，保证大文件能跑完而不是被杀掉 |
 | `neosca.max_length` | 300 | 单句最长词数，超长句跳过解析，防止单个病态文件拖死整批 |
 
-内存不足时调低 `stanza.workers`；机器核数更多时可调高（建议不超过核心数的一半）。指标输出与串行模式完全一致（回归验证 `mismatches []`）。
+内存不足或开启 `use_gpu` 时系统会自动收紧 `stanza.workers` 上限；`workers` 内与串行模式下都会通过按字符预算分块的 `bulk_process` 批量推理、多进程并行 UDPipe（大批量语料）以及节流 `.xlsx` 断点写盘提高硬件利用率。指标输出与单篇串行模式完全一致（回归验证 `mismatches []`）。
 
 **大文件支持**：单个 500 KB 级英文文件（约 8.6 万词）已实测跑通——`custom + leo + quansyn` 约 8 分钟，NeoSCA 约 29 分钟（16 核机器；单个文件只能串行解析，无法用 `stanza.workers` 加速）。中文 440 KB（约 15 万字）约 2 分钟。注意：
 

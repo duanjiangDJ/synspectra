@@ -312,7 +312,7 @@ Two accelerations are enabled by default and tunable in `metrics_config.json`:
 | `neosca.words_per_second` | 15 | Timeout scales with the batch word count: `max(timeout, words/15)`, so large files finish instead of being killed |
 | `neosca.max_length` | 300 | Longest sentence length; longer sentences are skipped to prevent a single pathological file from stalling a batch |
 
-Lower `stanza.workers` when memory is tight; raise it (up to roughly half the core count) on larger machines. Metric output is identical to serial mode (regression-verified `mismatches []`).
+When RAM is tight or `use_gpu` is enabled, `stanza.workers` is clamped automatically to safe hardware bounds. Both parallel and serial paths batch short texts via character-budgeted `bulk_process`, parallelize UDPipe on larger corpora, and throttle intermediate `.xlsx` checkpoints to maximize hardware utilization while keeping metric outputs identical (regression-verified `mismatches []`).
 
 **Large files**: a single 500 KB English file (~86k words) completes end to end — `custom + leo + quansyn` takes about 8 minutes and NeoSCA about 29 minutes on a 16-core machine (one file cannot use `stanza.workers`, so the Stanza stage is serial). A 440 KB Chinese file (~150k characters) takes about 2 minutes. Note:
 

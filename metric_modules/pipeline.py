@@ -4,6 +4,7 @@ import contextlib
 import csv
 import os
 import shutil
+import time
 from typing import Any
 
 import stanza
@@ -20,9 +21,9 @@ from .dependency_export import (
 from .fields import fields_for_methods, filter_fields_for_methods
 from .leo_dd import calculate_folder_mdd_ndd
 from .neosca_metrics import NeoSCABatcher
-from .parallel import create_process_pool, parse_files_parallel
+from .parallel import create_process_pool, parse_files_parallel, resolve_effective_workers
 from .quansyn_metrics import compute_quansyn_text_metrics
-from .stanza_conllu import text_to_conllu
+from .stanza_conllu import text_to_conllu, texts_to_conllu_batch
 from .text_utils import clean_text, extract_text_from_file
 
 # Serial runs load one Stanza pipeline per language profile and keep it around,
@@ -278,8 +279,15 @@ def process_category_folder(
         output_fields_for_config(config, methods), methods
     )
 
-    workers = int(stanza_config.get("workers", 1) or 1)
-    chunk_size = max(workers * 4, 4) if workers > 1 else 0
+    requested_workers = int(stanza_config.get("workers", 1) or 1)
+    use_gpu = bool(stanza_config.get("use_gpu", False))
+    workers = resolve_effective_workers(requested_workers, use_gpu=use_gpu)
+    if workers < requested_workers:
+        event_logger.log(
+            "info",
+            f"Adjusted Stanza workers from {requested_workers} to {workers} based on available hardware.",
+        )
+    chunk_size = max(workers * 32, 64) if workers > 1 else 64
     if needs_conllu and workers <= 1 and nlp is None:
         nlp = load_stanza_pipeline(config, stanza_config)
 
@@ -314,17 +322,26 @@ def process_category_folder(
         # loaded across chunks instead of reloading them every chunk.
         parse_pool = None
         if needs_conllu and workers > 1 and chunk_size and files_to_parse_count > 1:
-            parse_pool = stack.enter_context(create_process_pool(stanza_config, workers))
+            try:
+                parse_pool = stack.enter_context(create_process_pool(stanza_config, workers))
+            except (OSError, PermissionError):
+                workers = 1
+                parse_pool = None
+                if nlp is None:
+                    nlp = load_stanza_pipeline(config, stanza_config)
 
         if txt_files:
             written = len(txt_files_all) - len(txt_files)
             held_rows: list[tuple[str, dict[str, Any]]] = []
             dirty_metrics = False
+            rows_since_flush = 0
+            last_flush_time = time.monotonic()
 
             def record_row(txt_file: str, row: dict[str, Any]) -> None:
-                nonlocal written, dirty_metrics
+                nonlocal written, dirty_metrics, rows_since_flush
                 metric_rows.append({field: row.get(field, "") for field in fieldnames})
                 dirty_metrics = True
+                rows_since_flush += 1
                 written += 1
                 event_logger.progress(
                     category_name,
@@ -335,12 +352,16 @@ def process_category_folder(
                     human_message=f"Write completed: {txt_file}",
                 )
 
-            def flush_progress_workbook() -> None:
-                nonlocal dirty_metrics
+            def flush_progress_workbook(force: bool = False) -> None:
+                nonlocal dirty_metrics, rows_since_flush, last_flush_time
                 if not dirty_metrics:
+                    return
+                if not force and rows_since_flush < 500 and (time.monotonic() - last_flush_time) < 60.0:
                     return
                 write_category_workbook(output_xlsx, fieldnames, metric_rows, None, None)
                 dirty_metrics = False
+                rows_since_flush = 0
+                last_flush_time = time.monotonic()
 
             def finalize_held() -> None:
                 for held_file, held_row in held_rows:
@@ -354,7 +375,7 @@ def process_category_folder(
             for start, end in ranges:
                 chunk = txt_files[start:end]
                 conllu_map: dict[str, str] = {}
-                if needs_conllu and workers > 1 and len(chunk) > 1:
+                if needs_conllu and parse_pool is not None and workers > 1 and len(chunk) > 1:
                     event_logger.stage(
                         "stanza",
                         message=f"Parsing {len(chunk)} files with {workers} workers",
@@ -373,6 +394,13 @@ def process_category_folder(
                             len(txt_files_all),
                         ),
                     )
+                elif needs_conllu and len(chunk) > 1:
+                    if nlp is None:
+                        nlp = load_stanza_pipeline(config, stanza_config)
+                    chunk_paths = [os.path.join(category_path, name) for name in chunk]
+                    chunk_texts = [clean_text(extract_text_from_file(fp)) for fp in chunk_paths]
+                    for fp, conllu in zip(chunk_paths, texts_to_conllu_batch(chunk_texts, nlp)):
+                        conllu_map[fp] = conllu
 
                 for txt_file in chunk:
                     file_path = os.path.join(category_path, txt_file)
@@ -450,6 +478,13 @@ def process_category_folder(
                         workers,
                         pool=parse_pool,
                     )
+                elif len(missing_for_export) > 1:
+                    if nlp is None:
+                        nlp = load_stanza_pipeline(config, stanza_config)
+                    missing_paths = [os.path.join(category_path, name) for name in missing_for_export]
+                    missing_texts = [clean_text(extract_text_from_file(fp)) for fp in missing_paths]
+                    for fp, conllu in zip(missing_paths, texts_to_conllu_batch(missing_texts, nlp)):
+                        extra_conllu[fp] = conllu
                 for txt_file in missing_for_export:
                     file_path = os.path.join(category_path, txt_file)
                     if extra_conllu.get(file_path):

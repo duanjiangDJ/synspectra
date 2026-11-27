@@ -4,9 +4,24 @@ import csv
 import math
 import os
 from collections.abc import Iterable
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from ufal.udpipe import Model, Pipeline, ProcessingError
+
+from .parallel import memory_info_gb
+
+_RAW_DEPENDENCY_FIELDS = [
+    "sid",
+    "token",
+    "token_head",
+    "dep_relation",
+    "token_id",
+    "head_token_id",
+    "lemma",
+    "upos",
+]
+_leo_worker_pipeline = None
 
 
 @dataclass(frozen=True)
@@ -128,6 +143,33 @@ def calculate_text_mdd_ndd(text: str, pipeline) -> tuple[float, float]:
     return calculate_mdd_ndd_from_dependencies(annotate_text(text, pipeline))
 
 
+def _write_raw_dependencies_csv(raw_path: str, dependencies: list[DependencyRow]) -> None:
+    with open(raw_path, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=_RAW_DEPENDENCY_FIELDS)
+        writer.writeheader()
+        for row in dependencies:
+            writer.writerow(row.__dict__)
+
+
+def _init_leo_worker(model_path: str) -> None:
+    global _leo_worker_pipeline
+    _leo_worker_pipeline = load_udpipe_pipeline(model_path)
+
+
+def _process_leo_batch(tasks: list[tuple[str, str, str]]) -> list[tuple[str, float, float]]:
+    if _leo_worker_pipeline is None:
+        raise RuntimeError("UDPipe worker pipeline is not initialized.")
+    results: list[tuple[str, float, float]] = []
+    for filename, file_path, raw_path in tasks:
+        with open(file_path, "r", encoding="utf-8") as f:
+            text = f.read()
+        dependencies = annotate_text(text, _leo_worker_pipeline)
+        _write_raw_dependencies_csv(raw_path, dependencies)
+        mdd, ndd = calculate_mdd_ndd_from_dependencies(dependencies)
+        results.append((filename, mdd, ndd))
+    return results
+
+
 def calculate_folder_mdd_ndd(
     texts_folder: str,
     language_model_folder: str = "C:/",
@@ -136,51 +178,73 @@ def calculate_folder_mdd_ndd(
     model_file: str = "english-ewt-ud-2.4-190531.udpipe",
 ) -> tuple[dict[str, dict[str, float]], str]:
     model_path = os.path.join(language_model_folder, model_file)
-    pipeline = load_udpipe_pipeline(model_path)
     texts_folder_stripped = texts_folder.rstrip("/\\")
     results_folder = results_folder or f"{texts_folder_stripped}_results_dd"
     os.makedirs(results_folder, exist_ok=True)
 
-    metrics: dict[str, dict[str, float]] = {}
-    summary_rows: list[dict[str, str]] = []
-    txt_files = [name for name in os.listdir(texts_folder) if name.endswith(".txt")]
+    txt_files = sorted(name for name in os.listdir(texts_folder) if name.endswith(".txt"))
     total_files = len(txt_files)
+    metrics: dict[str, dict[str, float]] = {}
 
-    for index, filename in enumerate(txt_files, start=1):
-        file_path = os.path.join(texts_folder, filename)
-        with open(file_path, "r", encoding="utf-8") as f:
-            text = f.read()
-
-        dependencies = annotate_text(text, pipeline)
-        raw_path = os.path.join(results_folder, f"{os.path.splitext(filename)[0]}_raw_dependencies.csv")
-        with open(raw_path, "w", newline="", encoding="utf-8") as csvfile:
-            writer = csv.DictWriter(
-                csvfile,
-                fieldnames=[
-                    "sid",
-                    "token",
-                    "token_head",
-                    "dep_relation",
-                    "token_id",
-                    "head_token_id",
-                    "lemma",
-                    "upos",
-                ],
+    cpu_count = os.cpu_count() or 1
+    _, avail_gb = memory_info_gb()
+    ram_worker_cap = 2 if (avail_gb is not None and avail_gb < 2.0) else 8
+    max_workers = min(cpu_count, ram_worker_cap, max(1, total_files // 16))
+    ran_parallel = False
+    if total_files >= 64 and max_workers > 1:
+        tasks = [
+            (
+                filename,
+                os.path.join(texts_folder, filename),
+                os.path.join(results_folder, f"{os.path.splitext(filename)[0]}_raw_dependencies.csv"),
             )
-            writer.writeheader()
-            for row in dependencies:
-                writer.writerow(row.__dict__)
+            for filename in txt_files
+        ]
+        batch_size = max(16, min(64, (total_files + max_workers * 2 - 1) // (max_workers * 2)))
+        batches = [tasks[i : i + batch_size] for i in range(0, total_files, batch_size)]
+        completed = 0
+        try:
+            with ProcessPoolExecutor(
+                max_workers=max_workers,
+                initializer=_init_leo_worker,
+                initargs=(model_path,),
+            ) as pool:
+                futures = [pool.submit(_process_leo_batch, batch) for batch in batches]
+                for future in as_completed(futures):
+                    for filename, mdd, ndd in future.result():
+                        metrics[filename] = {"MDD_Leo": mdd, "NDD_Leo": ndd}
+                        completed += 1
+                        if progress_cb is not None:
+                            progress_cb(filename, completed, total_files)
+            ran_parallel = True
+        except (OSError, PermissionError):
+            metrics.clear()
 
-        mdd, ndd = calculate_mdd_ndd_from_dependencies(dependencies)
-        file_id = os.path.splitext(filename)[0]
-        metrics[filename] = {"MDD_Leo": mdd, "NDD_Leo": ndd}
-        # The model is recorded so a resumed run can tell whether the cached
-        # numbers came from the language that is configured now.
-        summary_rows.append(
-            {"file_id": file_id, "mdd": f"{mdd:.4f}", "ndd": f"{ndd:.4f}", "model": model_file}
-        )
-        if progress_cb is not None:
-            progress_cb(filename, index, total_files)
+    if not ran_parallel:
+        pipeline = load_udpipe_pipeline(model_path)
+        for index, filename in enumerate(txt_files, start=1):
+            file_path = os.path.join(texts_folder, filename)
+            with open(file_path, "r", encoding="utf-8") as f:
+                text = f.read()
+
+            dependencies = annotate_text(text, pipeline)
+            raw_path = os.path.join(results_folder, f"{os.path.splitext(filename)[0]}_raw_dependencies.csv")
+            _write_raw_dependencies_csv(raw_path, dependencies)
+            mdd, ndd = calculate_mdd_ndd_from_dependencies(dependencies)
+            metrics[filename] = {"MDD_Leo": mdd, "NDD_Leo": ndd}
+            if progress_cb is not None:
+                progress_cb(filename, index, total_files)
+
+    summary_rows = [
+        {
+            "file_id": os.path.splitext(filename)[0],
+            "mdd": f"{metrics[filename]['MDD_Leo']:.4f}",
+            "ndd": f"{metrics[filename]['NDD_Leo']:.4f}",
+            "model": model_file,
+        }
+        for filename in txt_files
+        if filename in metrics
+    ]
 
     summary_path = os.path.join(results_folder, "0mdd_ndd_results.csv")
     with open(summary_path, "w", newline="", encoding="utf-8") as csvfile:
